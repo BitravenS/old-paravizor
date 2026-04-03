@@ -1,0 +1,47 @@
+# Example of a tool config. 
+# Note that the file name should match the tool name in the pipeline.yaml (e.g. httpx-tech.yaml for httpx-tech)
+
+tool:
+  name: subfinder-enum                         # unique identifier, referenced by pipeline nodes
+  description: "Performs subdomain enumeration using subfinder"  # human-friendly description
+  binary: subfinder                    # executable name or full path
+  version_flag: "--version"             # flag to check version to see if tool is installed
+  install:                             # install hints (displayed when tool is missing)
+    - "go get github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"  # command to install the tool, can be a list of commands for different OS/package managers
+
+  input:
+    type: arg                        # arg | stdin | file | none
+    flag: "-d"                       # flag prefix for arg type
+    bulk:                            # bulk input mode (overrides single input)
+      type: file                     # write items to tempfile, pass path
+      flag: "-dL"
+      separator: "\n"
+    
+  output:
+    type: stdout                     # stdout | file | directory
+    format: line                     # line | json | jsonl | csv | regex | xml
+    # For non-stdout:
+    # path "/tmp/paravizor/{{project_name}}/{{tool_name}}-{{batch_id}}.{{extension}}"
+    # flag: "-o"
+    
+    # Field mapping (for structured formats):
+    fields:                          # maps parsed output to item fields
+      name: "$.host"                 # JSON path (for json/jsonl)
+      # or for regex: name: "{{.domain}}"
+  
+  flags:                             # default flags, always applied
+    - "-silent"
+    - "-all"
+    
+  env: {}                            # environment variables to set
+  
+  rate_limit:
+    flag: "-rl"                      # flag that controls the tool's internal rate limit
+    unit: "second"                   # what the flag value means
+  
+  timeout:
+    flag: "-timeout"
+    default: 0                     # seconds, applied if no flag override, 0 means no timeout
+  
+  consumes: domain                   # item type consumed
+  produces: domain                   # item type produced

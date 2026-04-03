@@ -24,13 +24,13 @@ type NodeConfig struct {
 	Produces string        `yaml:"produces,omitempty"`
 	Batch    BatchConfig   `yaml:"batch"`
 	Routes   []RouteConfig `yaml:"routes"`
-	Filter   string        `yaml:"filter,omitempty" validate:"regex"` // Optional filter (regex) to apply to the node's output before routing to downstream nodes
+	Filter   string        `yaml:"filter,omitempty" validate:"omitempty,regex"` // Optional filter (regex) to apply to the node's output before routing to downstream nodes
 }
 
 type BatchConfig struct {
-	Timeout      int  `yaml:"timeout,omitempty"`        // Timeout in seconds before processing the batch
-	MinSize      int  `yaml:"min_size,omitempty"`       // Minimum batch size to trigger processing
-	WaitForPeers bool `yaml:"wait_for_peers,omitempty"` // Whether to wait for upstream nodes to produce data before processing the batch
+	Timeout      int  `yaml:"timeout,omitempty" validate:"omitempty,gte=0"`  // Timeout in seconds before processing the batch. If this timeout is hit while the size is < MinSize, it starts processing
+	MinSize      int  `yaml:"min_size,omitempty" validate:"omitempty,gte=0"` // Minimum batch size to trigger processing
+	WaitForPeers bool `yaml:"wait_for_peers,omitempty" validate:"bool"`      // Whether to wait for upstream nodes to produce data before processing the batch
 }
 
 type RouteConfig struct {

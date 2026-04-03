@@ -1,0 +1,26 @@
+# Example config, global or per-project
+
+# ~/.config/paravizor/config.yaml
+paravizor:
+  # API keys
+  api_keys:
+    chaos: "your-key-here" # key valude store
+
+  theme: "catpuccin-mocha" # looks inside ~/.config/paravizor/themes for the theme definition
+  default_pipeline: default-recon # looks inside ~/.config/paravizor/pipelines for the pipeline definition
+
+  max_concurrent_processes: 10
+  process_healthcheck_interval: 5
+
+  db:
+    busy_timeout: 5000
+  
+  log_level: "info"
+  ai:
+    enabled: false
+    provider: "anthropic"
+    model: "opus-4.6"
+    base_url: "https://api.anthropic.com/v1"
+    api_key: "your-anthropic-api-key-here"
+    consent_mode: "always_ask"
+

@@ -1,0 +1,205 @@
+# Example pipline config, global or per-project
+
+# ~/.config/paravizor/pipelines/default-recon.yaml
+
+pipeline:
+  name: default-recon
+  description: "Full automated recon pipeline"
+
+  stages:
+    - id: 0
+      name: "Entry Point"
+    - id: 1
+      name: "Subdomain Enumeration"
+    - id: 2
+      name: "Fingerprinting"
+
+  nodes:
+    # -─ Stage 0: Entry Point ── Since each node can only have one tool
+    # we use this as a fanout node to route to multiple nodes in parallel.
+    # It's also possible to have one tool call multiple tools internally (subfinder, amass in parallel for example)
+    # but this is more flexible and easier to manage.
+
+    - id: entry-point
+      name: "Subdomain Enumeration Fanout Entry Point"
+      stage: 0
+      consumes: domain
+      produces: domain
+      routes:
+        - to: passive-enum
+        - to: active-bruteforce
+        - to: permutation-expansion
+        - to: live-filter
+    
+    # ── Stage 1: Subdomain Enumeration ──
+    - id: subfinder-passive-enum
+      name: "Passive Enumeration"
+      stage: 1
+      tool: subfinder # these exist as "tool.yaml" files in the tools directory
+      consumes: domain
+      produces: domain
+      routes:
+        - to: sync-passive-enum
+
+    - id: amass-passive-enum
+      name: "Amass Passive Enumeration"
+      stage: 1
+      tool: amass-passive
+      consumes: domain
+      produces: domain
+      routes:
+        - to: sync-passive-enum
+
+    - id: chaos-passive-enum
+      name: "Chaos API Passive Enumeration"
+      stage: 1
+      tool: chaos-api
+      consumes: domain
+      produces: domain
+      routes:
+        - to: sync-passive-enum
+    
+    - id: sync-passive-enum
+      name: "Assembly Point for syncing passive enumeration results"
+      stage: 1
+      consumes: domain
+      produces: domain
+      batch: # makes it wait for upstream nodes to finish to process everything in one go.
+        wait_for_peers: true
+      routes: # fanout to multiple nodes, can also have conditions for conditional routing
+        - to: active-bruteforce
+        - to: live-filter
+        - to: subdomain-takeover
+
+    - id: active-bruteforce
+      name: "Active Bruteforce"
+      stage: 1
+      tool: puredns-bruteforce
+      consumes: domain
+      produces: domain
+      routes:
+        - to: permutation-expansion
+        - to: live-filter
+        - to: subdomain-takeover
+
+    - id: permutation-expansion
+      name: "Permutation Expansion"
+      stage: 1
+      tool: alterx-puredns
+      consumes: domain
+      produces: domain
+      batch:
+        size: 100
+        timeout: 30
+      routes:
+        - to: live-filter
+        - to: subdomain-takeover
+
+    - id: live-filter
+      name: "Live Host Filter"
+      stage: 1
+      tool: dnsx-live
+      consumes: domain
+      produces: domain
+      batch:
+        size: 500
+        timeout: 30
+      routes:
+        - to: screenshotting
+        - to: port-scan
+        - to: techstack
+        - to: active-crawl
+        - to: passive-crawl
+        - to: nuclei-host
+
+    # ── Stage 2: Fingerprinting ──
+    - id: screenshotting
+      name: "Screenshotting"
+      stage: 2
+      tool: haylxon
+      consumes: domain
+      produces: file
+      batch:
+        size: 50
+        timeout: 15
+      # terminal node (no routes)
+
+    - id: port-scan
+      name: "Port Scanning"
+      stage: 2
+      tool: dnsx-rustscan
+      consumes: domain
+      produces: port
+      batch:
+        size: 50
+        timeout: 30
+      # terminal node
+
+    - id: techstack
+      name: "Techstack Fingerprinting Fanout"
+      stage: 2
+      consumes: domain
+      produces: domain
+      routes:
+        - to: techstack-httpx
+        - to: techstack-nuclei
+        - to: techstack-whatcms
+
+    - id: techstack-httpx
+      name: "httpx Techstack Fingerprinting"
+      stage: 2
+      tool: httpx-tech
+      consumes: domain
+      produces: techstack
+      batch:
+        size: 50
+        timeout: 30
+      routes:
+        - to: techstack-sync
+    - id: techstack-nuclei
+      name: "Nuclei Techstack Fingerprinting"
+      stage: 2
+      tool: nuclei-tech
+      consumes: domain
+      produces: techstack
+      batch:
+        size: 50
+        timeout: 30
+      routes:
+        - to: techstack-sync
+
+    - id: techstack-whatcms
+      name: "WhatCMS Techstack Fingerprinting"
+      stage: 2
+      tool: whatcms
+      consumes: domain
+      produces: techstack
+      batch:
+        size: 50
+        timeout: 30
+      routes:
+        - to: techstack-sync
+    
+    - id: techstack-sync
+      name: "Assembly Point for syncing techstack results"
+      stage: 2
+      consumes: techstack
+      produces: techstack
+      batch:
+        wait_for_peers: true
+      routes:
+        - to: wordpress-theme
+          condition: "'wordpress' in techstack"
+        - to: wpscan
+          condition: "'wordpress' in techstack"
+
+    - id: wordpress-theme
+      name: "WordPress Theme Detection"
+      stage: 2
+      tool: themedetect
+      consumes: domain
+      produces: domain
+      batch:
+        size: 10
+        timeout: 10s
+      # terminal node

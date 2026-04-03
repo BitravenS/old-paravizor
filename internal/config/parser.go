@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"charm.land/log/v2"
+	"github.com/bitravens/paravizor/v1/internal/utils"
 	"github.com/go-playground/validator/v10"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
@@ -16,7 +15,6 @@ import (
 )
 
 var validate *validator.Validate
-var hexColorRegex = regexp.MustCompile(`^#([a-fA-F0-9]{6}|[a-fA-F0-9]{3})$`)
 
 type parsingError struct {
 	path string
@@ -25,14 +23,6 @@ type parsingError struct {
 
 func (e parsingError) Error() string {
 	return fmt.Sprintf("failed parsing config at path %s with error %v", e.path, e.err)
-}
-func validateColor(fl validator.FieldLevel) bool {
-	s := fl.Field().String()
-	if hexColorRegex.MatchString(s) {
-		return true
-	}
-	n, err := strconv.Atoi(s)
-	return err == nil && n >= 0 && n <= 255
 }
 
 func initParser() ConfigParser {
@@ -46,7 +36,8 @@ func initParser() ConfigParser {
 		return name
 	})
 
-	validate.RegisterValidation("color", validateColor)
+	validate.RegisterValidation("color", utils.ValidateColor)
+	validate.RegisterValidation("valid_regex", utils.ValidRegex)
 
 	return ConfigParser{
 		k: koanf.NewWithConf(conf),

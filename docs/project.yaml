@@ -1,0 +1,22 @@
+# Example project config
+
+project:
+  name: "Example Recon Project"
+  description: "Bug bounty recon project for example.com"
+  pipeline: "default-recon" # looks inside ~/.config/paravizor/pipelines for the pipeline definition
+  scope:
+    include:
+      - "example.com"
+      - "*.example.com"
+    exclude:
+      - "dev.example.com"
+
+  rate_limit_mode: "normal"
+  rate_limit:
+    - nodes: # This needs more granular tuning, still figuring out the best way to do this
+      - "node-name"
+      budget: 50 # requests per second
+      burst_reserve_percentage: 10
+      burst_reserve_min: 5
+
+  
