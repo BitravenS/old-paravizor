@@ -12,12 +12,12 @@ import (
 
 // ProgramContext holds the application's global state needed by TUI components.
 type ProgramContext struct {
-	Config     *config.Config
+	Config   *config.Config
 	Project    *project.ProjectConfig // Nil if running outside of a project
 	ProjectDir string
-	Theme      *theme.Theme
-	Pipeline   *engine.PipelineConfig
-	Window     constants.Dimensions
+	Theme    *theme.Theme
+	Pipeline *engine.PipelineConfig
+	Window   constants.Dimensions
 	Version    string
 }
 
@@ -61,11 +61,9 @@ func NewProgramContext(location string) (*ProgramContext, error) {
 	}
 
 	return &ProgramContext{
-		Config:     &cfg,
-		Project:    proj,
-		ProjectDir: location,
-		Theme:      t,
-		Pipeline:   pipeline,
-		Version:    constants.Version,
+		Config:   &cfg,
+		Project:  proj,
+		Theme:    t,
+		Pipeline: pipeline,
 	}, nil
 }

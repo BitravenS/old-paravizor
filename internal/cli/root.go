@@ -103,7 +103,7 @@ func createModel(location string, debug bool) (tui.Model, *os.File) {
 		log.SetLevel(log.FatalLevel)
 	}
 
-	return tui.NewModel(location), loggerFile
+	return tui.NewModel(location, version, nil), loggerFile
 }
 
 func init() {

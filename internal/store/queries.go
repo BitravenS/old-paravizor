@@ -400,3 +400,57 @@ func (s *Store) HeartbeatProcess(ctx context.Context, processID int64) error {
 		return q.HeartbeatProcess(ctx, processID)
 	})
 }
+
+// GetRunningProcessPIDs returns a list of PIDs for all currently running processes.
+func (s *Store) GetRunningProcessPIDs(ctx context.Context) ([]int64, error) {
+	var rawPids []*int64
+	var err error
+
+	rawPids, err = s.rq.GetRunningProcessPIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get running process pids: %w", err)
+	}
+
+	var pids []int64
+	for _, pid := range rawPids {
+		if pid != nil {
+			pids = append(pids, *pid)
+		}
+	}
+
+	return pids, nil
+}
+
+// ============================================================
+// Notes
+// ============================================================
+
+func (s *Store) InsertNote(ctx context.Context, content string) (int64, error) {
+	var id int64
+	err := s.WriteTx(ctx, func(q *db.Queries) error {
+		if err := q.InsertNote(ctx, content); err != nil {
+			return err
+		}
+		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+	})
+	return id, err
+}
+
+func (s *Store) GetNotes(ctx context.Context) ([]db.Note, error) {
+	return s.Q().GetNotes(ctx)
+}
+
+func (s *Store) UpdateNote(ctx context.Context, id int64, content string) error {
+	return s.WriteTx(ctx, func(q *db.Queries) error {
+		return q.UpdateNote(ctx, db.UpdateNoteParams{
+			ID:      id,
+			Content: content,
+		})
+	})
+}
+
+func (s *Store) DeleteNote(ctx context.Context, id int64) error {
+	return s.WriteTx(ctx, func(q *db.Queries) error {
+		return q.DeleteNote(ctx, id)
+	})
+}

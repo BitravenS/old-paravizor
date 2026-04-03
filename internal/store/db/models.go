@@ -66,6 +66,13 @@ type Ip struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
+type Note struct {
+	ID        int64     `db:"id"`
+	Content   string    `db:"content"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
 type PipelineState struct {
 	ID          int64        `db:"id"`
 	ItemType    string       `db:"item_type"`

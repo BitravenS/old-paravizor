@@ -15,6 +15,7 @@ type Querier interface {
 	CountDomains(ctx context.Context) (int64, error)
 	CountFindings(ctx context.Context) (int64, error)
 	CountURLs(ctx context.Context) (int64, error)
+	DeleteNote(ctx context.Context, id int64) error
 	DeleteScopeRuleByPattern(ctx context.Context, pattern string) error
 	GetBatchByID(ctx context.Context, id int64) (Batch, error)
 	GetDNSRecordsByDomain(ctx context.Context, domainID int64) ([]DnsRecord, error)
@@ -24,9 +25,11 @@ type Querier interface {
 	GetFindings(ctx context.Context, arg GetFindingsParams) ([]Finding, error)
 	GetIPByAddress(ctx context.Context, address string) (Ip, error)
 	GetLiveDomains(ctx context.Context, arg GetLiveDomainsParams) ([]Domain, error)
+	GetNotes(ctx context.Context) ([]Note, error)
 	GetPendingItems(ctx context.Context, arg GetPendingItemsParams) ([]PipelineState, error)
 	GetPortsByIP(ctx context.Context, ipID int64) ([]Port, error)
 	GetProcessByID(ctx context.Context, id int64) (Process, error)
+	GetRunningProcessPIDs(ctx context.Context) ([]*int64, error)
 	GetScopeRules(ctx context.Context) ([]ScopeRule, error)
 	GetTechStackByDomain(ctx context.Context, domainID int64) ([]Techstack, error)
 	GetURLByFullURL(ctx context.Context, fullUrl string) (Url, error)
@@ -46,6 +49,10 @@ type Querier interface {
 	// findings
 	// ============================================================
 	InsertFinding(ctx context.Context, arg InsertFindingParams) error
+	// ============================================================
+	// notes
+	// ============================================================
+	InsertNote(ctx context.Context, content string) error
 	// ============================================================
 	// dns_records
 	// ============================================================
@@ -93,6 +100,7 @@ type Querier interface {
 	ResetProcessingItems(ctx context.Context) (sql.Result, error)
 	UpdateDNSRecord(ctx context.Context, arg UpdateDNSRecordParams) error
 	UpdateDomainLiveness(ctx context.Context, arg UpdateDomainLivenessParams) error
+	UpdateNote(ctx context.Context, arg UpdateNoteParams) error
 	UpdatePipelineState(ctx context.Context, arg UpdatePipelineStateParams) error
 	UpdatePort(ctx context.Context, arg UpdatePortParams) error
 	UpdateTechStack(ctx context.Context, arg UpdateTechStackParams) error

@@ -162,3 +162,10 @@ CREATE TABLE IF NOT EXISTS downloaded_files (
 );
 CREATE INDEX IF NOT EXISTS idx_downloaded_files_url  ON downloaded_files(url_id);
 CREATE INDEX IF NOT EXISTS idx_downloaded_files_type ON downloaded_files(file_type);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    content    TEXT    NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

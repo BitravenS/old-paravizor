@@ -164,10 +164,13 @@ FROM processes WHERE id = ?;
 
 -- name: CompleteProcess :exec
 UPDATE processes SET status = ?, exit_code = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?;
-
 -- name: HeartbeatProcess :exec
-UPDATE processes SET last_heartbeat = CURRENT_TIMESTAMP WHERE id = ?;
+UPDATE processes
+SET last_heartbeat = CURRENT_TIMESTAMP
+WHERE id = ?;
 
+-- name: GetRunningProcessPIDs :many
+SELECT pid FROM processes WHERE status = 'running' AND pid IS NOT NULL;
 -- ============================================================
 -- pipeline_state
 -- ============================================================
@@ -218,3 +221,19 @@ INSERT INTO downloaded_files (url_id, file_path, file_type, size_bytes, sha256) 
 -- name: GetDownloadedFilesByURL :many
 SELECT id, url_id, file_path, file_type, size_bytes, sha256, created_at
 FROM downloaded_files WHERE url_id = ?;
+
+-- ============================================================
+-- notes
+-- ============================================================
+
+-- name: InsertNote :exec
+INSERT INTO notes (content) VALUES (?);
+
+-- name: GetNotes :many
+SELECT id, content, created_at, updated_at FROM notes ORDER BY created_at DESC;
+
+-- name: UpdateNote :exec
+UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;
+
+-- name: DeleteNote :exec
+DELETE FROM notes WHERE id = ?;

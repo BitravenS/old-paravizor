@@ -82,6 +82,17 @@ func (q *Queries) CountURLs(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const DeleteNote = `-- name: DeleteNote :exec
+= ?;
+
+DELETE FROM notes WHERE id
+`
+
+func (q *Queries) DeleteNote(ctx context.Context, id int64) error {
+	_, err := q.exec(ctx, q.deleteNoteStmt, DeleteNote, id)
+	return err
+}
+
 const DeleteScopeRuleByPattern = `-- name: DeleteScopeRuleByPattern :exec
 ASC;
 
@@ -356,6 +367,40 @@ func (q *Queries) GetLiveDomains(ctx context.Context, arg GetLiveDomainsParams) 
 	return items, nil
 }
 
+const GetNotes = `-- name: GetNotes :many
+(?);
+
+SELECT id, content, created_at, updated_at FROM notes ORDER BY created_at
+`
+
+func (q *Queries) GetNotes(ctx context.Context) ([]Note, error) {
+	rows, err := q.query(ctx, q.getNotesStmt, GetNotes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Note{}
+	for rows.Next() {
+		var i Note
+		if err := rows.Scan(
+			&i.ID,
+			&i.Content,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const GetPendingItems = `-- name: GetPendingItems :many
 = ?;
 
@@ -468,6 +513,35 @@ func (q *Queries) GetProcessByID(ctx context.Context, id int64) (Process, error)
 		&i.LastHeartbeat,
 	)
 	return i, err
+}
+
+const GetRunningProcessPIDs = `-- name: GetRunningProcessPIDs :many
+= ?;
+
+SELECT pid FROM processes WHERE status = 'running' AND pid IS NOT
+`
+
+func (q *Queries) GetRunningProcessPIDs(ctx context.Context) ([]*int64, error) {
+	rows, err := q.query(ctx, q.getRunningProcessPIDsStmt, GetRunningProcessPIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []*int64{}
+	for rows.Next() {
+		var pid *int64
+		if err := rows.Scan(&pid); err != nil {
+			return nil, err
+		}
+		items = append(items, pid)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const GetScopeRules = `-- name: GetScopeRules :many
@@ -666,8 +740,9 @@ func (q *Queries) HasInterruptedSession(ctx context.Context) (int64, error) {
 
 const HeartbeatProcess = `-- name: HeartbeatProcess :exec
 = ?;
-
-UPDATE processes SET last_heartbeat = CURRENT_TIMESTAMP WHERE id
+UPDATE processes
+SET last_heartbeat = CURRENT_TIMESTAMP
+WHERE id
 `
 
 func (q *Queries) HeartbeatProcess(ctx context.Context, id int64) error {
@@ -758,6 +833,21 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 	return err
 }
 
+const InsertNote = `-- name: InsertNote :exec
+= ?;
+
+
+INSERT INTO notes (content) VALUES
+`
+
+// ============================================================
+// notes
+// ============================================================
+func (q *Queries) InsertNote(ctx context.Context, content string) error {
+	_, err := q.exec(ctx, q.insertNoteStmt, InsertNote, content)
+	return err
+}
+
 const InsertOrIgnoreDNSRecord = `-- name: InsertOrIgnoreDNSRecord :exec
 ng';
 
@@ -803,8 +893,7 @@ func (q *Queries) InsertOrIgnoreIP(ctx context.Context, address string) error {
 }
 
 const InsertOrIgnorePipelineState = `-- name: InsertOrIgnorePipelineState :exec
-= ?;
-
+ULL;
 
 INSERT OR IGNORE INTO pipeline_state (item_type, item_id, node_id, status)
 VALUES (?, ?, ?, 'pendi
@@ -1071,6 +1160,22 @@ type UpdateDomainLivenessParams struct {
 
 func (q *Queries) UpdateDomainLiveness(ctx context.Context, arg UpdateDomainLivenessParams) error {
 	_, err := q.exec(ctx, q.updateDomainLivenessStmt, UpdateDomainLiveness, arg.IsLive, arg.Ip, arg.ID)
+	return err
+}
+
+const UpdateNote = `-- name: UpdateNote :exec
+ESC;
+
+UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id
+`
+
+type UpdateNoteParams struct {
+	Content string `db:"content"`
+	ID      int64  `db:"id"`
+}
+
+func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) error {
+	_, err := q.exec(ctx, q.updateNoteStmt, UpdateNote, arg.Content, arg.ID)
 	return err
 }
 

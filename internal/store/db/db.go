@@ -39,6 +39,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countURLsStmt, err = db.PrepareContext(ctx, CountURLs); err != nil {
 		return nil, fmt.Errorf("error preparing query CountURLs: %w", err)
 	}
+	if q.deleteNoteStmt, err = db.PrepareContext(ctx, DeleteNote); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteNote: %w", err)
+	}
 	if q.deleteScopeRuleByPatternStmt, err = db.PrepareContext(ctx, DeleteScopeRuleByPattern); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteScopeRuleByPattern: %w", err)
 	}
@@ -66,6 +69,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLiveDomainsStmt, err = db.PrepareContext(ctx, GetLiveDomains); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLiveDomains: %w", err)
 	}
+	if q.getNotesStmt, err = db.PrepareContext(ctx, GetNotes); err != nil {
+		return nil, fmt.Errorf("error preparing query GetNotes: %w", err)
+	}
 	if q.getPendingItemsStmt, err = db.PrepareContext(ctx, GetPendingItems); err != nil {
 		return nil, fmt.Errorf("error preparing query GetPendingItems: %w", err)
 	}
@@ -74,6 +80,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getProcessByIDStmt, err = db.PrepareContext(ctx, GetProcessByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetProcessByID: %w", err)
+	}
+	if q.getRunningProcessPIDsStmt, err = db.PrepareContext(ctx, GetRunningProcessPIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRunningProcessPIDs: %w", err)
 	}
 	if q.getScopeRulesStmt, err = db.PrepareContext(ctx, GetScopeRules); err != nil {
 		return nil, fmt.Errorf("error preparing query GetScopeRules: %w", err)
@@ -104,6 +113,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.insertFindingStmt, err = db.PrepareContext(ctx, InsertFinding); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertFinding: %w", err)
+	}
+	if q.insertNoteStmt, err = db.PrepareContext(ctx, InsertNote); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertNote: %w", err)
 	}
 	if q.insertOrIgnoreDNSRecordStmt, err = db.PrepareContext(ctx, InsertOrIgnoreDNSRecord); err != nil {
 		return nil, fmt.Errorf("error preparing query InsertOrIgnoreDNSRecord: %w", err)
@@ -143,6 +155,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateDomainLivenessStmt, err = db.PrepareContext(ctx, UpdateDomainLiveness); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateDomainLiveness: %w", err)
+	}
+	if q.updateNoteStmt, err = db.PrepareContext(ctx, UpdateNote); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateNote: %w", err)
 	}
 	if q.updatePipelineStateStmt, err = db.PrepareContext(ctx, UpdatePipelineState); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdatePipelineState: %w", err)
@@ -187,6 +202,11 @@ func (q *Queries) Close() error {
 	if q.countURLsStmt != nil {
 		if cerr := q.countURLsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countURLsStmt: %w", cerr)
+		}
+	}
+	if q.deleteNoteStmt != nil {
+		if cerr := q.deleteNoteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteNoteStmt: %w", cerr)
 		}
 	}
 	if q.deleteScopeRuleByPatternStmt != nil {
@@ -234,6 +254,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLiveDomainsStmt: %w", cerr)
 		}
 	}
+	if q.getNotesStmt != nil {
+		if cerr := q.getNotesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getNotesStmt: %w", cerr)
+		}
+	}
 	if q.getPendingItemsStmt != nil {
 		if cerr := q.getPendingItemsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getPendingItemsStmt: %w", cerr)
@@ -247,6 +272,11 @@ func (q *Queries) Close() error {
 	if q.getProcessByIDStmt != nil {
 		if cerr := q.getProcessByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getProcessByIDStmt: %w", cerr)
+		}
+	}
+	if q.getRunningProcessPIDsStmt != nil {
+		if cerr := q.getRunningProcessPIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRunningProcessPIDsStmt: %w", cerr)
 		}
 	}
 	if q.getScopeRulesStmt != nil {
@@ -297,6 +327,11 @@ func (q *Queries) Close() error {
 	if q.insertFindingStmt != nil {
 		if cerr := q.insertFindingStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing insertFindingStmt: %w", cerr)
+		}
+	}
+	if q.insertNoteStmt != nil {
+		if cerr := q.insertNoteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertNoteStmt: %w", cerr)
 		}
 	}
 	if q.insertOrIgnoreDNSRecordStmt != nil {
@@ -362,6 +397,11 @@ func (q *Queries) Close() error {
 	if q.updateDomainLivenessStmt != nil {
 		if cerr := q.updateDomainLivenessStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateDomainLivenessStmt: %w", cerr)
+		}
+	}
+	if q.updateNoteStmt != nil {
+		if cerr := q.updateNoteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateNoteStmt: %w", cerr)
 		}
 	}
 	if q.updatePipelineStateStmt != nil {
@@ -433,6 +473,7 @@ type Queries struct {
 	countDomainsStmt                *sql.Stmt
 	countFindingsStmt               *sql.Stmt
 	countURLsStmt                   *sql.Stmt
+	deleteNoteStmt                  *sql.Stmt
 	deleteScopeRuleByPatternStmt    *sql.Stmt
 	getBatchByIDStmt                *sql.Stmt
 	getDNSRecordsByDomainStmt       *sql.Stmt
@@ -442,9 +483,11 @@ type Queries struct {
 	getFindingsStmt                 *sql.Stmt
 	getIPByAddressStmt              *sql.Stmt
 	getLiveDomainsStmt              *sql.Stmt
+	getNotesStmt                    *sql.Stmt
 	getPendingItemsStmt             *sql.Stmt
 	getPortsByIPStmt                *sql.Stmt
 	getProcessByIDStmt              *sql.Stmt
+	getRunningProcessPIDsStmt       *sql.Stmt
 	getScopeRulesStmt               *sql.Stmt
 	getTechStackByDomainStmt        *sql.Stmt
 	getURLByFullURLStmt             *sql.Stmt
@@ -455,6 +498,7 @@ type Queries struct {
 	insertBatchStmt                 *sql.Stmt
 	insertDownloadedFileStmt        *sql.Stmt
 	insertFindingStmt               *sql.Stmt
+	insertNoteStmt                  *sql.Stmt
 	insertOrIgnoreDNSRecordStmt     *sql.Stmt
 	insertOrIgnoreIPStmt            *sql.Stmt
 	insertOrIgnorePipelineStateStmt *sql.Stmt
@@ -468,6 +512,7 @@ type Queries struct {
 	resetProcessingItemsStmt        *sql.Stmt
 	updateDNSRecordStmt             *sql.Stmt
 	updateDomainLivenessStmt        *sql.Stmt
+	updateNoteStmt                  *sql.Stmt
 	updatePipelineStateStmt         *sql.Stmt
 	updatePortStmt                  *sql.Stmt
 	updateTechStackStmt             *sql.Stmt
@@ -484,6 +529,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countDomainsStmt:                q.countDomainsStmt,
 		countFindingsStmt:               q.countFindingsStmt,
 		countURLsStmt:                   q.countURLsStmt,
+		deleteNoteStmt:                  q.deleteNoteStmt,
 		deleteScopeRuleByPatternStmt:    q.deleteScopeRuleByPatternStmt,
 		getBatchByIDStmt:                q.getBatchByIDStmt,
 		getDNSRecordsByDomainStmt:       q.getDNSRecordsByDomainStmt,
@@ -493,9 +539,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getFindingsStmt:                 q.getFindingsStmt,
 		getIPByAddressStmt:              q.getIPByAddressStmt,
 		getLiveDomainsStmt:              q.getLiveDomainsStmt,
+		getNotesStmt:                    q.getNotesStmt,
 		getPendingItemsStmt:             q.getPendingItemsStmt,
 		getPortsByIPStmt:                q.getPortsByIPStmt,
 		getProcessByIDStmt:              q.getProcessByIDStmt,
+		getRunningProcessPIDsStmt:       q.getRunningProcessPIDsStmt,
 		getScopeRulesStmt:               q.getScopeRulesStmt,
 		getTechStackByDomainStmt:        q.getTechStackByDomainStmt,
 		getURLByFullURLStmt:             q.getURLByFullURLStmt,
@@ -506,6 +554,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		insertBatchStmt:                 q.insertBatchStmt,
 		insertDownloadedFileStmt:        q.insertDownloadedFileStmt,
 		insertFindingStmt:               q.insertFindingStmt,
+		insertNoteStmt:                  q.insertNoteStmt,
 		insertOrIgnoreDNSRecordStmt:     q.insertOrIgnoreDNSRecordStmt,
 		insertOrIgnoreIPStmt:            q.insertOrIgnoreIPStmt,
 		insertOrIgnorePipelineStateStmt: q.insertOrIgnorePipelineStateStmt,
@@ -519,6 +568,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		resetProcessingItemsStmt:        q.resetProcessingItemsStmt,
 		updateDNSRecordStmt:             q.updateDNSRecordStmt,
 		updateDomainLivenessStmt:        q.updateDomainLivenessStmt,
+		updateNoteStmt:                  q.updateNoteStmt,
 		updatePipelineStateStmt:         q.updatePipelineStateStmt,
 		updatePortStmt:                  q.updatePortStmt,
 		updateTechStackStmt:             q.updateTechStackStmt,
