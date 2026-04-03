@@ -3,18 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
-	"reflect"
-	"strings"
+	"path/filepath"
 
 	"charm.land/log/v2"
 	"github.com/bitravens/paravizor/v1/internal/utils"
-	"github.com/go-playground/validator/v10"
-	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/knadh/koanf/providers/file"
-	"github.com/knadh/koanf/v2"
 )
-
-var validate *validator.Validate
 
 type parsingError struct {
 	path string
@@ -22,110 +15,66 @@ type parsingError struct {
 }
 
 func (e parsingError) Error() string {
-	return fmt.Sprintf("failed parsing config at path %s with error %v", e.path, e.err)
+	return fmt.Sprintf("failed parsing config at path %s: %v", e.path, e.err)
 }
 
-func initParser() ConfigParser {
-	validate = validator.New()
+// LoadConfig loads the application configuration with graceful fallbacks.
+func LoadConfig(projectDir string) Config {
+	defCfg := getDefaultConfig()
 
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := strings.Split(fld.Tag.Get("yaml"), ",")[0]
-		if name == "-" {
-			return ""
+	// If PRVZR_CONFIG is set, we bypass standard resolution and strictly use that.
+	envPath := os.Getenv("PRVZR_CONFIG")
+	if envPath != "" {
+		k, err := utils.LoadYAMLFile(envPath)
+		if err == nil {
+			cfg, err := utils.UnmarshalKoanf(k, defCfg)
+			if err == nil {
+				log.Info("Loaded config from PRVZR_CONFIG", "path", envPath)
+				return cfg
+			}
+			log.Error("Failed to unmarshal PRVZR_CONFIG, using default config", "err", err)
+		} else {
+			log.Error("Failed to load PRVZR_CONFIG, using default config", "err", err)
 		}
-		return name
-	})
-
-	validate.RegisterValidation("color", utils.ValidateColor)
-	validate.RegisterValidation("valid_regex", utils.ValidRegex)
-
-	return ConfigParser{
-		k: koanf.NewWithConf(conf),
-	}
-}
-
-func (parser ConfigParser) loadGlobalConfig(globalCfgPath string) error {
-	return parser.k.Load(file.Provider(globalCfgPath), yaml.Parser())
-}
-
-func (parser ConfigParser) mergeConfigs(globalCfgPath, userProvidedCfgPath string) (Config, error) {
-	if err := parser.loadGlobalConfig(globalCfgPath); err != nil {
-		return Config{}, parsingError{err: err, path: globalCfgPath}
-	}
-	log.Info("Loaded global config", "path", globalCfgPath)
-	if err := parser.k.Load(
-		file.Provider(userProvidedCfgPath),
-		yaml.Parser(),
-		koanf.WithMergeFunc(func(
-			overrides, dest map[string]any,
-		) error {
-
-			return nil
-		}),
-	); err != nil {
-		return Config{}, parsingError{err: err, path: userProvidedCfgPath}
-	}
-	log.Info("Loaded user provided config", "path", userProvidedCfgPath)
-
-	return parser.unmarshalConfigWithDefaults()
-}
-
-// TODO: Make it load config from project directory
-func (parser ConfigParser) getProvidedConfigPath(location string) string {
-	var userProvidedCfgPath string
-	if location != "" {
-		userProvidedCfgPath = location
-	} else if cfg := os.Getenv("PRVZR_CONFIG"); cfg != "" {
-		userProvidedCfgPath = cfg
+		return defCfg
 	}
 
-	return userProvidedCfgPath
-}
-
-func ParseConfig(location string) (Config, error) {
-	parser := initParser()
-
-	var config Config
-	var err error
-
-	userProvidedCfgPath := parser.getProvidedConfigPath(location)
-
-	if userProvidedCfgPath != "" {
-		if err := parser.k.Load(file.Provider(userProvidedCfgPath), yaml.Parser()); err != nil {
-			return Config{}, parsingError{path: userProvidedCfgPath, err: err}
-		}
-		log.Info("Loaded user provided config (skipping global)", "path", userProvidedCfgPath)
-		return parser.unmarshalConfigWithDefaults()
-	}
-
-	globalCfgPath, err := parser.getGlobalConfigPathOrCreateIfMissing()
+	globalPath, err := GetGlobalConfigPath()
 	if err != nil {
-		return config, parsingError{path: globalCfgPath, err: err}
+		log.Error("Failed to resolve global config path, using default config", "err", err)
+		return defCfg
 	}
 
-	if userProvidedCfgPath != "" {
-		mergedCfg, err := parser.mergeConfigs(globalCfgPath, userProvidedCfgPath)
-		if err != nil {
-			return Config{}, err
+	// Try merging global + project override if projectDir is provided
+	if projectDir != "" {
+		overridePath := filepath.Join(projectDir, ConfigFileName)
+		if _, err := os.Stat(overridePath); err == nil {
+			k, err := utils.MergeYAMLFiles(true, globalPath, overridePath)
+			if err == nil {
+				cfg, err := utils.UnmarshalKoanf(k, defCfg)
+				if err == nil {
+					log.Info("Loaded config with project override", "global", globalPath, "override", overridePath)
+					return cfg
+				}
+				log.Error("Failed to unmarshal merged config, falling back to global config", "err", err)
+			} else {
+				log.Error("Failed to merge project config, falling back to global config", "err", err)
+			}
 		}
-		return mergedCfg, nil
 	}
 
-	if err = parser.loadGlobalConfig(globalCfgPath); err != nil {
-		log.Error("failed loading global config", "err", err)
-		return Config{}, parsingError{path: globalCfgPath, err: err}
+	// Fallback to loading just the global config
+	k, err := utils.LoadYAMLFile(globalPath)
+	if err == nil {
+		cfg, err := utils.UnmarshalKoanf(k, defCfg)
+		if err == nil {
+			log.Info("Loaded global config", "path", globalPath)
+			return cfg
+		}
+		log.Error("Failed to unmarshal global config, using default config", "err", err)
+	} else {
+		log.Error("Failed to load global config, using default config", "err", err)
 	}
 
-	return parser.unmarshalConfigWithDefaults()
-}
-
-func (parser ConfigParser) unmarshalConfigWithDefaults() (Config, error) {
-	cfg := parser.getDefaultConfig()
-	err := parser.k.UnmarshalWithConf("", &cfg, koanf.UnmarshalConf{Tag: "yaml"})
-	if err != nil {
-		return Config{}, err
-	}
-
-	err = validate.Struct(cfg)
-	return cfg, err
+	return defCfg
 }

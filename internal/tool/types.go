@@ -5,14 +5,14 @@ type ToolConfig struct {
 	Description  string          `yaml:"description" validate:"required"`       // Description of the tool's functionality
 	Binary       string          `yaml:"binary" validate:"required"`            // Executable name or full path for this tool
 	InstallHints []string        `yaml:"install,omitempty" validate:"required"` // Installation hints to display when the tool is missing
-	Input        InputConfig     `yaml:"input" validate:"required,dive"`        // Configuration for how the tool consumes input
-	Output       OutputConfig    `yaml:"output" validate:"required,dive"`       // Configuration for how the tool produces output
+	Input        InputConfig     `yaml:"input" validate:"required"`             // Configuration for how the tool consumes input
+	Output       OutputConfig    `yaml:"output" validate:"required"`            // Configuration for how the tool produces output
 	Flags        []string        `yaml:"flags,omitempty"`                       // Additional flags to pass when executing the tool
-	Timeout      TimeoutConfig   `yaml:"timeout,omitempty" validate:"dive"`     // Optional timeout configuration for the tool execution
-	RateLimit    RateLimitConfig `yaml:"rate_limit,omitempty" validate:"dive"`  // Optional rate limit configuration for the tool execution
+	Timeout      TimeoutConfig   `yaml:"timeout,omitempty"`                     // Optional timeout configuration for the tool execution
+	RateLimit    RateLimitConfig `yaml:"rate_limit,omitempty"`                  // Optional rate limit configuration for the tool execution
 	Consumes     string          `yaml:"consumes" validate:"required"`          // Item type consumed by the tool
 	Produces     string          `yaml:"produces" validate:"required"`          // Item type produced by the tool
-	Scope        ScopeConfig     `yaml:"scope,omitempty" validate:"dive"`       // Optional scope configuration flags for the tool
+	Scope        ScopeConfig     `yaml:"scope,omitempty"`                       // Optional scope configuration flags for the tool
 }
 
 type InputConfig struct {

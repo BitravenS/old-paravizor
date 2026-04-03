@@ -1,0 +1,13 @@
+paravizor
+├── init <name> [--dir <path> -i <in-scope> -e <out-of-scope>]
+├── run [--dir <name>]               # Start/resume pipeline execution
+├── query <sql>                      # Raw SQL query against project DB
+├── export                           # Export artifacts
+│   ├── artifacts [--dir <path>]     # Export txt files
+│   ├── obsidian [--output <path>]   # Export Obsidian canvas
+│   └── report [--output <path>]     # Export markdown report
+├── tools                            # Tool management
+│   ├── list                         # List all known tools and availability
+│   ├── check                        # Check which tools are installed
+│   └── show <name>                  # Show tool definition details
+└── version                          # Show version info

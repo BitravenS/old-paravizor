@@ -30,7 +30,7 @@ type NodeConfig struct {
 type BatchConfig struct {
 	Timeout      int  `yaml:"timeout,omitempty" validate:"omitempty,gte=0"`  // Timeout in seconds before processing the batch. If this timeout is hit while the size is < MinSize, it starts processing
 	MinSize      int  `yaml:"min_size,omitempty" validate:"omitempty,gte=0"` // Minimum batch size to trigger processing
-	WaitForPeers bool `yaml:"wait_for_peers,omitempty" validate:"bool"`      // Whether to wait for upstream nodes to produce data before processing the batch
+	WaitForPeers bool `yaml:"wait_for_peers,omitempty" validate:"boolean"`   // Whether to wait for upstream nodes to produce data before processing the batch
 }
 
 type RouteConfig struct {

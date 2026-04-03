@@ -2,17 +2,15 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"charm.land/log/v2"
-	"github.com/bitravens/paravizor/v1/internal/config"
+	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/spf13/cobra"
 )
 
 func newInitCmd() *cobra.Command {
 	var dir string
-	var scopeConfig config.ScopeConfig
+	var scopeConfig project.ScopeConfig
 
 	cmd := &cobra.Command{
 		Use:   "init <name>",
@@ -28,18 +26,26 @@ func newInitCmd() *cobra.Command {
 			if base == "" {
 				base = "."
 			}
-			projectPath := filepath.Join(base, projectName)
-			if err := os.MkdirAll(projectPath, 0755); err != nil {
-				log.Fatal("Failed to create project directory", err)
+
+			// Generate a default project config
+			cfg, err := project.CreateProject(
+				projectName,
+				"New Paravizor project",
+				base,
+				"", // use default pipeline
+				"", // use normal rate limit
+				nil,
+				scopeConfig,
+			)
+			if err != nil {
+				log.Fatal("Failed to create project config", "err", err)
 			}
-			if err := os.MkdirAll(filepath.Join(projectPath, "tools"), 0755); err != nil {
-				log.Fatal("Failed to create tools directory", err)
+
+			projectPath, err := project.InitProject(base, *cfg)
+			if err != nil {
+				log.Fatal("Failed to initialize project", "err", err)
 			}
-			// TODO: Build project file from args
-			cfgContent := fmt.Sprintf("")
-			if err := os.WriteFile(filepath.Join(projectPath, "config.yaml"), []byte(cfgContent), 0644); err != nil {
-				log.Fatal("Failed to write config file", err)
-			}
+
 			fmt.Printf("Initialized new Paravizor project at %s\n", projectPath)
 		}}
 	cmd.Flags().StringVarP(&dir, "dir", "d", "", "Base directory to create the project in (default: current directory)")
