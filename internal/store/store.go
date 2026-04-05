@@ -68,6 +68,13 @@ func Open(ctx context.Context, dbPath string, cfg DBConfig) (*Store, error) {
 	readDB.SetMaxOpenConns(4)
 	readDB.SetMaxIdleConns(4)
 
+	// Ensure schema exists before preparing statements.
+	if err := Migrate(ctx, writeDB); err != nil {
+		writeDB.Close()
+		readDB.Close()
+		return nil, fmt.Errorf("run migrations before prepare: %w", err)
+	}
+
 	// Pre-compile all statements on both connections.
 	wq, err := db.Prepare(ctx, writeDB)
 	if err != nil {

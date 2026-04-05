@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/progress"
-	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -23,6 +22,7 @@ import (
 type PerformanceTickMsg struct {
 	CPUPercent float64
 	MemPercent float64
+	MemMB      float64
 	DBSizeMB   float64
 	HasDB      bool
 }
@@ -30,9 +30,9 @@ type PerformanceTickMsg struct {
 // metricsClockMsg is an internal tick used to trigger a metrics refresh.
 type metricsClockMsg struct{}
 
-// TickMetrics arms a 2-second repeating clock that drives metric refreshes.
+// TickMetrics arms a 200ms repeating clock that drives metric refreshes.
 func TickMetrics() tea.Cmd {
-	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
 		return metricsClockMsg{}
 	})
 }
@@ -43,7 +43,7 @@ func FetchPerformanceMetrics(ctx *context.ProgramContext, s *store.Store) tea.Cm
 	return func() tea.Msg {
 		msg := PerformanceTickMsg{}
 
-		if ctx.Project != nil && ctx.ProjectDir != "" {
+		if ctx.ProjectDir != "" {
 			msg.HasDB = true
 			dbPath := filepath.Join(ctx.ProjectDir, "paravizor.db")
 			if info, err := os.Stat(dbPath); err == nil {
@@ -59,53 +59,35 @@ func FetchPerformanceMetrics(ctx *context.ProgramContext, s *store.Store) tea.Cm
 		m := utils.GetPerformanceMetrics(childPIDs)
 		msg.CPUPercent = m.CPUPercent
 		msg.MemPercent = m.MemPercent
+		msg.MemMB = m.MemMB
 		return msg
 	}
 }
 
-type MiddleView int
-
-const (
-	MiddleViewPipeline MiddleView = iota
-	MiddleViewTools
-)
-
 const dbCapMB = 1024.0 // 1 GB shown as 100% in the DB bar
 
 type Model struct {
-	ctx        *context.ProgramContext
-	store      *store.Store
-	notes      textarea.Model
-	cpuProg    progress.Model
-	memProg    progress.Model
-	dbProg     progress.Model
-	middleView MiddleView
-	height     int
-	width      int
-	cpuPct     float64
-	memPct     float64
-	dbSizeMB   float64
-	hasDB      bool
+	ctx      *context.ProgramContext
+	store    *store.Store
+	cpuProg  progress.Model
+	memProg  progress.Model
+	dbProg   progress.Model
+	height   int
+	width    int
+	cpuPct   float64
+	memPct   float64
+	memMB    float64
+	dbSizeMB float64
+	hasDB    bool
 }
 
 func NewModel(ctx *context.ProgramContext, s *store.Store) Model {
-	ta := textarea.New()
-	ta.Placeholder = "Write sticky notes here..."
-	ta.Prompt = ""
-	ta.ShowLineNumbers = false
-	styles := textarea.DefaultDarkStyles()
-	styles.Focused.CursorLine = lipgloss.NewStyle()
-	styles.Blurred.CursorLine = lipgloss.NewStyle()
-	ta.SetStyles(styles)
-
 	return Model{
-		ctx:        ctx,
-		store:      s,
-		notes:      ta,
-		cpuProg:    progress.New(progress.WithColors(lipgloss.Color("#FF7CCB"), lipgloss.Color("#FDFF8C"))),
-		memProg:    progress.New(progress.WithColors(lipgloss.Color("#8CFFB8"), lipgloss.Color("#7CFFF6"))),
-		dbProg:     progress.New(progress.WithColors(lipgloss.Color("#7C95FF"), lipgloss.Color("#B88CFF"))),
-		middleView: MiddleViewPipeline,
+		ctx:     ctx,
+		store:   s,
+		cpuProg: progress.New(progress.WithColors(lipgloss.Color("#FF7CCB"), lipgloss.Color("#FDFF8C"))),
+		memProg: progress.New(progress.WithColors(lipgloss.Color("#8CFFB8"), lipgloss.Color("#7CFFF6"))),
+		dbProg:  progress.New(progress.WithColors(lipgloss.Color("#7C95FF"), lipgloss.Color("#B88CFF"))),
 	}
 }
 
@@ -118,7 +100,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.SetSize(msg.Width, m.height)
+		m.SetSize(msg.Width, msg.Height)
 
 	case metricsClockMsg:
 		cmds = append(cmds, TickMetrics(), FetchPerformanceMetrics(m.ctx, m.store))
@@ -126,22 +108,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case PerformanceTickMsg:
 		m.cpuPct = msg.CPUPercent
 		m.memPct = msg.MemPercent
+		m.memMB = msg.MemMB
 		m.dbSizeMB = msg.DBSizeMB
 		m.hasDB = msg.HasDB
-
-	case tea.KeyMsg:
-		if msg.String() == "tab" {
-			if m.middleView == MiddleViewPipeline {
-				m.middleView = MiddleViewTools
-			} else {
-				m.middleView = MiddleViewPipeline
-			}
-		}
 	}
-
-	var cmd tea.Cmd
-	m.notes, cmd = m.notes.Update(msg)
-	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
@@ -151,8 +121,6 @@ func (m *Model) SetSize(width, height int) {
 	m.height = height
 
 	colWidth := width / 3
-	m.notes.SetWidth(colWidth - 4)
-	m.notes.SetHeight(height - 4)
 
 	barWidth := colWidth - 10
 	if barWidth < 4 {
@@ -203,44 +171,71 @@ func (m Model) View() string {
 	colWidth3 := m.width - colWidth1 - colWidth2
 	pad := lipgloss.NewStyle().Padding(0, 1)
 
-	// Left: Notes
-	notesView := borderWithTitle(m.notes.View(), "Notes", colWidth1, m.height,
+	projectName := "No project"
+	projectPath := ""
+	projectTargets := 0
+	if m.ctx.Project != nil {
+		projectName = m.ctx.Project.Name
+		projectTargets = len(m.ctx.Project.Scope.Include)
+	}
+	if m.ctx.ProjectDir != "" {
+		projectPath = m.ctx.ProjectDir
+	}
+	if projectPath == "" {
+		projectPath = "-"
+	}
+
+	projectContent := fmt.Sprintf("\nName: %s\nTargets: %d\nPath: %s", projectName, projectTargets, projectPath)
+	projectView := borderWithTitle(pad.Render(projectContent), "Project", colWidth1, m.height,
 		m.ctx.Theme.PrimaryBorder, context.LogoColor)
 
-	// Middle: Pipeline / Tools
-	var midContent string
-	if m.middleView == MiddleViewPipeline {
-		if m.ctx.Pipeline != nil {
-			midContent = fmt.Sprintf("\nName: %s\nStages: %d", m.ctx.Pipeline.Name, len(m.ctx.Pipeline.Stages))
-		} else {
-			midContent = "\nNo pipeline loaded."
-		}
-	} else {
-		midContent = "\nPress Tab to switch views."
+	pipelineName := "No pipeline loaded"
+	stageCount := 0
+	nodeCount := 0
+	if m.ctx.Pipeline != nil {
+		pipelineName = m.ctx.Pipeline.Name
+		stageCount = len(m.ctx.Pipeline.Stages)
+		nodeCount = len(m.ctx.Pipeline.Nodes)
 	}
-	midTitle := "Pipeline Config"
-	if m.middleView == MiddleViewTools {
-		midTitle = "Tools Config"
-	}
-	midView := borderWithTitle(pad.Render(midContent), midTitle, colWidth2, m.height,
+	pipelineContent := fmt.Sprintf("\nName: %s\nStages: %d\nNodes: %d", pipelineName, stageCount, nodeCount)
+	pipelineView := borderWithTitle(pad.Render(pipelineContent), "Pipeline", colWidth2, m.height,
 		m.ctx.Theme.PrimaryBorder, context.LogoColor)
 
-	// Right: Performance — real values
-	cpuLine := fmt.Sprintf("CPU %5.1f%%\n%s", m.cpuPct, m.cpuProg.ViewAs(clamp01(m.cpuPct/100)))
-	memLine := fmt.Sprintf("MEM %5.1f%%\n%s", m.memPct, m.memProg.ViewAs(clamp01(m.memPct/100)))
+	// Performance: single-line rows (label + bar + value)
+	labelStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText)
+	valueStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText)
 
-	var dbLine string
+	cpuRow := fmt.Sprintf("%s %s %s",
+		labelStyle.Render("CPU"),
+		m.cpuProg.ViewAs(clamp01(m.cpuPct/100)),
+		valueStyle.Render(fmt.Sprintf("%5.1f%%", m.cpuPct)),
+	)
+	memRow := fmt.Sprintf("%s %s %s",
+		labelStyle.Render("MEM"),
+		m.memProg.ViewAs(clamp01(m.memPct/100)),
+		valueStyle.Render(fmt.Sprintf("%5.1f%% / %.1fMB", m.memPct, m.memMB)),
+	)
+
+	var dbRow string
 	if m.hasDB {
-		dbLine = fmt.Sprintf("DB  %.1f MB / 1 GB\n%s", m.dbSizeMB, m.dbProg.ViewAs(clamp01(m.dbSizeMB/dbCapMB)))
+		dbRow = fmt.Sprintf("%s %s %s",
+			labelStyle.Render("DB "),
+			m.dbProg.ViewAs(clamp01(m.dbSizeMB/dbCapMB)),
+			valueStyle.Render(fmt.Sprintf("%.1fMB", m.dbSizeMB)),
+		)
 	} else {
 		greyProg := progress.New(progress.WithColors(lipgloss.Color("#555555"), lipgloss.Color("#555555")))
 		greyProg.SetWidth(m.dbProg.Width())
-		dbLine = fmt.Sprintf("DB  N/A\n%s", greyProg.ViewAs(0))
+		dbRow = fmt.Sprintf("%s %s %s",
+			labelStyle.Render("DB "),
+			greyProg.ViewAs(0),
+			valueStyle.Render("N/A"),
+		)
 	}
 
-	perfContent := "\n" + strings.Join([]string{cpuLine, memLine, dbLine}, "\n\n")
+	perfContent := "\n" + strings.Join([]string{cpuRow, memRow, dbRow}, "\n\n")
 	perfView := borderWithTitle(pad.Render(perfContent), "Performance", colWidth3, m.height,
 		m.ctx.Theme.PrimaryBorder, context.LogoColor)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, notesView, midView, perfView)
+	return lipgloss.JoinHorizontal(lipgloss.Top, projectView, pipelineView, perfView)
 }

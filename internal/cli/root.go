@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/spf13/cobra"
 
+	"github.com/bitravens/paravizor/v1/internal/bootstrap"
 	"github.com/bitravens/paravizor/v1/internal/tui"
 	"github.com/bitravens/paravizor/v1/internal/tui/constants"
 	pctx "github.com/bitravens/paravizor/v1/internal/tui/context"
@@ -62,6 +63,16 @@ func setDebugLogLevel() {
 }
 
 func Execute() error {
+	if err := bootstrap.Init(); err != nil {
+		if issues, ok := bootstrap.NonFatalIssues(err); ok {
+			for _, issue := range issues {
+				_, _ = fmt.Fprintf(os.Stderr, "Warning: %s\n", issue)
+			}
+		} else {
+			return err
+		}
+	}
+
 	return fang.Execute(
 		context.Background(),
 		rootCmd,
@@ -90,7 +101,7 @@ func createModel(location string, debug bool) (tui.Model, *os.File) {
 			log.SetTimeFormat(time.Kitchen)
 			log.SetReportCaller(true)
 			setDebugLogLevel()
-			log.Info("Logging to %s", logfileName)
+			log.Info("Logging to file", "path", logfilePath)
 			if location != "" {
 				log.Info("Running in project", "project", location)
 			}

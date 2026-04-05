@@ -25,3 +25,7 @@ type Config struct {
 	LogLevel            string            `yaml:"log_level,omitempty" validate:"omitempty,oneof=debug info warn error"`
 	AIConfig            *ai.AIConfig      `yaml:"ai,omitempty"`
 }
+
+type ConfigWrapper struct {
+	Config Config `yaml:"paravizor"`
+}

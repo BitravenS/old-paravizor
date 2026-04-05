@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -50,6 +52,25 @@ func parseYAMLBytes[T any](source string, data []byte) (T, error) {
 		return v, fmt.Errorf("invalid yaml at %s: %w", source, err)
 	}
 	return v, nil
+}
+
+// ParseYAMLBytesMultiDoc decodes a multi-document YAML byte slice into a slice of T.
+// Documents that fail to decode are skipped. Validation and empty-doc filtering
+// are the caller's responsibility (check zero-value fields like Name == "").
+func ParseYAMLBytesMultiDoc[T any](data []byte) ([]T, error) {
+	decoder := yamler.NewDecoder(bytes.NewReader(data))
+	var results []T
+	for {
+		var v T
+		if err := decoder.Decode(&v); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, fmt.Errorf("decode multi-doc yaml: %w", err)
+		}
+		results = append(results, v)
+	}
+	return results, nil
 }
 
 func WriteYAML[T any](path string, v T) error {

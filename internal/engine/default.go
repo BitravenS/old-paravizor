@@ -1,8 +1,9 @@
 package engine
 
 import (
-	"github.com/bitravens/paravizor/v1/internal/utils"
 	"os"
+
+	"github.com/bitravens/paravizor/v1/internal/utils"
 )
 
 func WriteDefaultPipeline(path string) error {
@@ -13,6 +14,9 @@ func WriteDefaultPipeline(path string) error {
 	cfg := PipelineConfig{
 		Name:        "default",
 		Description: "Default Paravizor Recon Pipeline",
+		Init: []InitConfig{
+			{Scope: "wildcard", Node: "subfinder", ItemType: "domain"},
+		},
 		Stages: []StageConfig{
 			{ID: 1, Name: "Discovery"},
 		},
@@ -23,10 +27,10 @@ func WriteDefaultPipeline(path string) error {
 				Stage:    1,
 				Tool:     "subfinder",
 				Consumes: "domain",
-				Produces: "subdomain",
+				Produces: "domain",
 			},
 		},
 	}
 
-	return utils.WriteYAML(path, cfg)
+	return utils.WriteYAML(path, PipelineWrapper{Pipeline: cfg})
 }

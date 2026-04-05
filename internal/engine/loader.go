@@ -1,11 +1,11 @@
 package engine
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
 	"charm.land/log/v2"
+	"github.com/bitravens/paravizor/v1/internal/utils"
 )
 
 // LoadExternalPipeline loads a PipelineConfig from ~/.config/paravizor/pipelines/<name>.yaml.
@@ -20,21 +20,18 @@ func LoadExternalPipeline(name string) (*PipelineConfig, error) {
 		name += ".yaml"
 	}
 
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			configDir = filepath.Join(homeDir, ".config")
-		}
+	prvzrDir, err := utils.PrvzrConfigDir()
+	if err != nil {
+		return nil, err
 	}
 
-	pipelinePath := filepath.Join(configDir, "paravizor", "pipelines", name)
+	pipelinePath := filepath.Join(prvzrDir, "pipelines", name)
 
 	cfg, err := ParsePipelineConfig(pipelinePath)
 	if err != nil {
 		if name != "default.yaml" {
 			log.Warn("Failed to load pipeline, falling back to default", "pipeline", name, "err", err)
-			defaultPath := filepath.Join(configDir, "paravizor", "pipelines", "default.yaml")
+			defaultPath := filepath.Join(prvzrDir, "pipelines", "default.yaml")
 			defCfg, defErr := ParsePipelineConfig(defaultPath)
 			if defErr != nil {
 				return nil, err // Return original error if fallback also fails

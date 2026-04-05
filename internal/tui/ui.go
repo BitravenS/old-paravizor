@@ -4,11 +4,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"charm.land/log/v2"
+	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/bitravens/paravizor/v1/internal/store"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/footer"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/header"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/home"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/popup"
+	"github.com/bitravens/paravizor/v1/internal/tui/components/projectview"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/settings"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/toaster"
 	"github.com/bitravens/paravizor/v1/internal/tui/context"
@@ -28,6 +30,7 @@ type Model struct {
 	state        ViewState
 	homeView     home.Model
 	settingsView settings.Model
+	projectView  projectview.Model
 	headerView   header.Model
 	footerView   footer.Model
 	popupView    popup.Model
@@ -49,6 +52,12 @@ func NewModel(location, version string, s *store.Store) Model {
 		showFooter = true // Show footer by default in projects
 	}
 
+	// If an existing project location was provided, open it directly.
+	projInitDir := ""
+	if location != "" {
+		projInitDir = location
+	}
+
 	return Model{
 		Ctx:          ctx,
 		store:        s,
@@ -56,6 +65,7 @@ func NewModel(location, version string, s *store.Store) Model {
 		showFooter:   showFooter,
 		homeView:     home.NewModel(ctx),
 		settingsView: settings.NewModel(ctx),
+		projectView:  projectview.NewModel(ctx, projInitDir),
 		headerView:   header.NewModel(ctx),
 		footerView:   footer.NewModel(ctx, s),
 		popupView:    popup.NewModel(ctx),
@@ -73,6 +83,8 @@ func (m Model) Init() tea.Cmd {
 		m.initScreen,
 		m.homeView.Init(),
 		m.settingsView.Init(),
+		m.projectView.Init(),
+		m.footerView.Init(),
 	)
 }
 
@@ -101,6 +113,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "ctrl+r":
+			if m.state == ViewStateProject {
+				if dir := m.projectView.ProjectDir(); dir != "" {
+					m.Ctx.ProjectDir = dir
+					if p, err := project.LoadProject(dir); err == nil {
+						m.Ctx.Project = &p
+					}
+				}
+			}
 		case "?":
 			if !m.popupView.IsVisible() {
 				m.popupView.Show("Help Menu", "Keybindings:\n\n?\tShow this help\nf\tToggle Footer\nq\tQuit")
@@ -127,12 +148,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = ViewStateSettings
 			return m, nil
 		case home.ActionCreateProject:
+			m.projectView = projectview.NewModel(m.Ctx, "")
+			m.Ctx.ProjectDir = ""
+			m.Ctx.Project = nil
 			m.state = ViewStateProject
-			return m, nil
+			return m, m.projectView.Init()
 		case home.ActionOpenProject:
+			m.projectView = projectview.NewModel(m.Ctx, msg.Action.ProjectPath)
+			m.Ctx.ProjectDir = msg.Action.ProjectPath
+			if p, err := project.LoadProject(msg.Action.ProjectPath); err == nil {
+				m.Ctx.Project = &p
+			}
 			m.state = ViewStateProject
-			return m, nil
+			return m, m.projectView.Init()
 		}
+	case projectview.MsgBack:
+		m.state = ViewStateHome
+		return m, nil
 	case settings.MsgCancel, settings.MsgSaveConfig:
 		m.state = ViewStateHome
 
@@ -150,12 +182,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ViewStateSettings:
 		m.settingsView, cmd = m.settingsView.Update(msg)
 		cmds = append(cmds, cmd)
-	}
-
-	if m.showFooter {
-		m.footerView, cmd = m.footerView.Update(msg)
+	case ViewStateProject:
+		m.projectView, cmd = m.projectView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
+
+	// Keep footer state/metrics alive even when hidden.
+	m.footerView, cmd = m.footerView.Update(msg)
+	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
@@ -176,6 +210,7 @@ func (m *Model) recalculateLayout(msg tea.Msg) {
 	sizeMsg := tea.WindowSizeMsg{Width: m.Ctx.Window.Width, Height: contentHeight}
 	m.homeView, _ = m.homeView.Update(sizeMsg)
 	m.settingsView, _ = m.settingsView.Update(sizeMsg)
+	m.projectView, _ = m.projectView.Update(sizeMsg)
 }
 
 func (m Model) View() tea.View {
@@ -187,7 +222,7 @@ func (m Model) View() tea.View {
 	case ViewStateSettings:
 		content = m.settingsView.View()
 	case ViewStateProject:
-		content = lipgloss.NewStyle().Align(lipgloss.Center).Render("Project View (WIP)\nPress 'ctrl+c' to exit")
+		content = m.projectView.View()
 	}
 
 	// Update active tab based on state
@@ -211,8 +246,12 @@ func (m Model) View() tea.View {
 	contentStyle := lipgloss.NewStyle().
 		Width(m.Ctx.Window.Width).
 		Height(contentHeight).
-		Align(lipgloss.Center, lipgloss.Center).
 		Foreground(m.Ctx.Theme.PrimaryText)
+
+	// Center home/settings; project view manages its own layout.
+	if m.state != ViewStateProject {
+		contentStyle = contentStyle.Align(lipgloss.Center, lipgloss.Center)
+	}
 
 	renderedContent := contentStyle.Render(content)
 

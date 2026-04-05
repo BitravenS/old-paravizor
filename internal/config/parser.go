@@ -18,16 +18,13 @@ func (e parsingError) Error() string {
 	return fmt.Sprintf("failed parsing config at path %s: %v", e.path, e.err)
 }
 
-// LoadConfig loads the application configuration with graceful fallbacks.
 func LoadConfig(projectDir string) Config {
-	defCfg := getDefaultConfig()
-
-	// If PRVZR_CONFIG is set, we bypass standard resolution and strictly use that.
+	defCfg := GetDefaultConfig()
 	envPath := os.Getenv("PRVZR_CONFIG")
 	if envPath != "" {
 		k, err := utils.LoadYAMLFile(envPath)
 		if err == nil {
-			cfg, err := utils.UnmarshalKoanf(k, defCfg)
+			cfg, err := utils.UnmarshalKoanfAt(k, "paravizor", defCfg)
 			if err == nil {
 				log.Info("Loaded config from PRVZR_CONFIG", "path", envPath)
 				return cfg
@@ -51,7 +48,7 @@ func LoadConfig(projectDir string) Config {
 		if _, err := os.Stat(overridePath); err == nil {
 			k, err := utils.MergeYAMLFiles(true, globalPath, overridePath)
 			if err == nil {
-				cfg, err := utils.UnmarshalKoanf(k, defCfg)
+				cfg, err := utils.UnmarshalKoanfAt(k, "paravizor", defCfg)
 				if err == nil {
 					log.Info("Loaded config with project override", "global", globalPath, "override", overridePath)
 					return cfg
@@ -66,7 +63,7 @@ func LoadConfig(projectDir string) Config {
 	// Fallback to loading just the global config
 	k, err := utils.LoadYAMLFile(globalPath)
 	if err == nil {
-		cfg, err := utils.UnmarshalKoanf(k, defCfg)
+		cfg, err := utils.UnmarshalKoanfAt(k, "paravizor", defCfg)
 		if err == nil {
 			log.Info("Loaded global config", "path", globalPath)
 			return cfg

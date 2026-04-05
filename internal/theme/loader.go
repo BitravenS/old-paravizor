@@ -21,17 +21,13 @@ func LoadExternalTheme(name string) (*ThemeConfig, error) {
 		name += ".yaml"
 	}
 
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			log.Warn("Failed to get home dir for theme", "err", err)
-			return nil, err
-		}
-		configDir = filepath.Join(homeDir, ".config")
+	prvzrDir, err := utils.PrvzrConfigDir()
+	if err != nil {
+		log.Warn("Failed to resolve paravizor config dir for theme", "err", err)
+		return nil, err
 	}
 
-	themePath := filepath.Join(configDir, "paravizor", "themes", name)
+	themePath := filepath.Join(prvzrDir, "themes", name)
 	if _, err := os.Stat(themePath); os.IsNotExist(err) {
 		log.Warn("Theme file not found, falling back to default", "path", themePath)
 		return nil, err

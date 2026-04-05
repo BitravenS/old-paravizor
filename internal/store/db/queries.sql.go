@@ -11,9 +11,7 @@ import (
 )
 
 const CompleteBatch = `-- name: CompleteBatch :exec
-= ?;
-
-UPDATE batches SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id
+UPDATE batches SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?
 `
 
 type CompleteBatchParams struct {
@@ -27,9 +25,7 @@ func (q *Queries) CompleteBatch(ctx context.Context, arg CompleteBatchParams) er
 }
 
 const CompleteProcess = `-- name: CompleteProcess :exec
-= ?;
-
-UPDATE processes SET status = ?, exit_code = ?, completed_at = CURRENT_TIMESTAMP WHERE id
+UPDATE processes SET status = ?, exit_code = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?
 `
 
 type CompleteProcessParams struct {
@@ -44,9 +40,7 @@ func (q *Queries) CompleteProcess(ctx context.Context, arg CompleteProcessParams
 }
 
 const CountDomains = `-- name: CountDomains :one
-T ?;
-
-SELECT COUNT(*) FROM dom
+SELECT COUNT(*) FROM domains
 `
 
 func (q *Queries) CountDomains(ctx context.Context) (int64, error) {
@@ -57,9 +51,7 @@ func (q *Queries) CountDomains(ctx context.Context) (int64, error) {
 }
 
 const CountFindings = `-- name: CountFindings :one
-T ?;
-
-SELECT COUNT(*) FROM find
+SELECT COUNT(*) FROM findings
 `
 
 func (q *Queries) CountFindings(ctx context.Context) (int64, error) {
@@ -70,9 +62,7 @@ func (q *Queries) CountFindings(ctx context.Context) (int64, error) {
 }
 
 const CountURLs = `-- name: CountURLs :one
-T ?;
-
-SELECT COUNT(*) FROM
+SELECT COUNT(*) FROM urls
 `
 
 func (q *Queries) CountURLs(ctx context.Context) (int64, error) {
@@ -83,9 +73,7 @@ func (q *Queries) CountURLs(ctx context.Context) (int64, error) {
 }
 
 const DeleteNote = `-- name: DeleteNote :exec
-= ?;
-
-DELETE FROM notes WHERE id
+DELETE FROM notes WHERE id = ?
 `
 
 func (q *Queries) DeleteNote(ctx context.Context, id int64) error {
@@ -94,9 +82,7 @@ func (q *Queries) DeleteNote(ctx context.Context, id int64) error {
 }
 
 const DeleteScopeRuleByPattern = `-- name: DeleteScopeRuleByPattern :exec
-ASC;
-
-DELETE FROM scope_rules WHERE pattern
+DELETE FROM scope_rules WHERE pattern = ?
 `
 
 func (q *Queries) DeleteScopeRuleByPattern(ctx context.Context, pattern string) error {
@@ -105,9 +91,7 @@ func (q *Queries) DeleteScopeRuleByPattern(ctx context.Context, pattern string) 
 }
 
 const GetBatchByID = `-- name: GetBatchByID :one
-g');
-
-SELECT id, node_id, item_count, status, created_at, completed_at FROM batches WHERE id
+SELECT id, node_id, item_count, status, created_at, completed_at FROM batches WHERE id = ?
 `
 
 func (q *Queries) GetBatchByID(ctx context.Context, id int64) (Batch, error) {
@@ -125,9 +109,7 @@ func (q *Queries) GetBatchByID(ctx context.Context, id int64) (Batch, error) {
 }
 
 const GetDNSRecordsByDomain = `-- name: GetDNSRecordsByDomain :many
-= ?;
-
-SELECT id, domain_id, record_type, value, ttl, source FROM dns_records WHERE domain_id
+SELECT id, domain_id, record_type, value, ttl, source FROM dns_records WHERE domain_id = ?
 `
 
 func (q *Queries) GetDNSRecordsByDomain(ctx context.Context, domainID int64) ([]DnsRecord, error) {
@@ -161,10 +143,8 @@ func (q *Queries) GetDNSRecordsByDomain(ctx context.Context, domainID int64) ([]
 }
 
 const GetDomainByName = `-- name: GetDomainByName :one
-AMP;
-
 SELECT id, name, source, is_live, ip, batch_id, created_at, updated_at
-FROM domains WHERE name
+FROM domains WHERE name = ?
 `
 
 func (q *Queries) GetDomainByName(ctx context.Context, name string) (Domain, error) {
@@ -184,10 +164,8 @@ func (q *Queries) GetDomainByName(ctx context.Context, name string) (Domain, err
 }
 
 const GetDomains = `-- name: GetDomains :many
-= ?;
-
 SELECT id, name, source, is_live, ip, batch_id, created_at, updated_at
-FROM domains ORDER BY created_at DESC LIMIT ? OFFS
+FROM domains ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type GetDomainsParams struct {
@@ -228,10 +206,8 @@ func (q *Queries) GetDomains(ctx context.Context, arg GetDomainsParams) ([]Domai
 }
 
 const GetDownloadedFilesByURL = `-- name: GetDownloadedFilesByURL :many
-?);
-
 SELECT id, url_id, file_path, file_type, size_bytes, sha256, created_at
-FROM downloaded_files WHERE url_id
+FROM downloaded_files WHERE url_id = ?
 `
 
 func (q *Queries) GetDownloadedFilesByURL(ctx context.Context, urlID int64) ([]DownloadedFile, error) {
@@ -266,10 +242,8 @@ func (q *Queries) GetDownloadedFilesByURL(ctx context.Context, urlID int64) ([]D
 }
 
 const GetFindings = `-- name: GetFindings :many
-?);
-
 SELECT id, domain_id, url_id, scanner, severity, title, description, evidence, created_at
-FROM findings ORDER BY created_at DESC LIMIT ? OFFS
+FROM findings ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type GetFindingsParams struct {
@@ -311,9 +285,7 @@ func (q *Queries) GetFindings(ctx context.Context, arg GetFindingsParams) ([]Fin
 }
 
 const GetIPByAddress = `-- name: GetIPByAddress :one
-(?);
-
-SELECT id, address, created_at FROM ips WHERE address
+SELECT id, address, created_at FROM ips WHERE address = ?
 `
 
 func (q *Queries) GetIPByAddress(ctx context.Context, address string) (Ip, error) {
@@ -324,10 +296,8 @@ func (q *Queries) GetIPByAddress(ctx context.Context, address string) (Ip, error
 }
 
 const GetLiveDomains = `-- name: GetLiveDomains :many
-T ?;
-
 SELECT id, name, source, is_live, ip, batch_id, created_at, updated_at
-FROM domains WHERE is_live = 1 ORDER BY created_at DESC LIMIT ? OFFS
+FROM domains WHERE is_live = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type GetLiveDomainsParams struct {
@@ -368,9 +338,7 @@ func (q *Queries) GetLiveDomains(ctx context.Context, arg GetLiveDomainsParams) 
 }
 
 const GetNotes = `-- name: GetNotes :many
-(?);
-
-SELECT id, content, created_at, updated_at FROM notes ORDER BY created_at
+SELECT id, content, created_at, updated_at FROM notes ORDER BY created_at DESC
 `
 
 func (q *Queries) GetNotes(ctx context.Context) ([]Note, error) {
@@ -402,13 +370,11 @@ func (q *Queries) GetNotes(ctx context.Context) ([]Note, error) {
 }
 
 const GetPendingItems = `-- name: GetPendingItems :many
-= ?;
-
 SELECT id, item_type, item_id, node_id, status, started_at, completed_at, error
 FROM pipeline_state
 WHERE node_id = ? AND item_type = ? AND status = 'pending'
 ORDER BY id ASC
-LIM
+LIMIT ?
 `
 
 type GetPendingItemsParams struct {
@@ -450,9 +416,7 @@ func (q *Queries) GetPendingItems(ctx context.Context, arg GetPendingItemsParams
 }
 
 const GetPortsByIP = `-- name: GetPortsByIP :many
-= ?;
-
-SELECT id, ip_id, port, protocol, service, banner, source FROM ports WHERE ip_id
+SELECT id, ip_id, port, protocol, service, banner, source FROM ports WHERE ip_id = ?
 `
 
 func (q *Queries) GetPortsByIP(ctx context.Context, ipID int64) ([]Port, error) {
@@ -487,11 +451,9 @@ func (q *Queries) GetPortsByIP(ctx context.Context, ipID int64) ([]Port, error) 
 }
 
 const GetProcessByID = `-- name: GetProcessByID :one
-?);
-
 SELECT id, name, command, pid, node_id, batch_id, status, exit_code,
        stdout_path, stderr_path, started_at, completed_at, last_heartbeat
-FROM processes WHERE id
+FROM processes WHERE id = ?
 `
 
 func (q *Queries) GetProcessByID(ctx context.Context, id int64) (Process, error) {
@@ -516,9 +478,7 @@ func (q *Queries) GetProcessByID(ctx context.Context, id int64) (Process, error)
 }
 
 const GetRunningProcessPIDs = `-- name: GetRunningProcessPIDs :many
-= ?;
-
-SELECT pid FROM processes WHERE status = 'running' AND pid IS NOT
+SELECT pid FROM processes WHERE status = 'running' AND pid IS NOT NULL
 `
 
 func (q *Queries) GetRunningProcessPIDs(ctx context.Context) ([]*int64, error) {
@@ -545,9 +505,7 @@ func (q *Queries) GetRunningProcessPIDs(ctx context.Context) ([]*int64, error) {
 }
 
 const GetScopeRules = `-- name: GetScopeRules :many
-?);
-
-SELECT id, pattern, type, in_scope, created_at FROM scope_rules ORDER BY in_scope ASC, id
+SELECT id, pattern, type, in_scope, created_at FROM scope_rules ORDER BY in_scope ASC, id ASC
 `
 
 func (q *Queries) GetScopeRules(ctx context.Context) ([]ScopeRule, error) {
@@ -580,9 +538,7 @@ func (q *Queries) GetScopeRules(ctx context.Context) ([]ScopeRule, error) {
 }
 
 const GetTechStackByDomain = `-- name: GetTechStackByDomain :many
-= ?;
-
-SELECT id, domain_id, technology, version, category, source FROM techstack WHERE domain_id
+SELECT id, domain_id, technology, version, category, source FROM techstack WHERE domain_id = ?
 `
 
 func (q *Queries) GetTechStackByDomain(ctx context.Context, domainID int64) ([]Techstack, error) {
@@ -616,11 +572,9 @@ func (q *Queries) GetTechStackByDomain(ctx context.Context, domainID int64) ([]T
 }
 
 const GetURLByFullURL = `-- name: GetURLByFullURL :one
-AMP;
-
 SELECT id, full_url, domain_id, path, query_string, status_code, content_type,
        source, batch_id, created_at, updated_at
-FROM urls WHERE full_url
+FROM urls WHERE full_url = ?
 `
 
 func (q *Queries) GetURLByFullURL(ctx context.Context, fullUrl string) (Url, error) {
@@ -643,9 +597,7 @@ func (q *Queries) GetURLByFullURL(ctx context.Context, fullUrl string) (Url, err
 }
 
 const GetURLFlagsByURL = `-- name: GetURLFlagsByURL :many
-= ?;
-
-SELECT id, url_id, flag_type, flag_value, source FROM url_flags WHERE url_id
+SELECT id, url_id, flag_type, flag_value, source FROM url_flags WHERE url_id = ?
 `
 
 func (q *Queries) GetURLFlagsByURL(ctx context.Context, urlID int64) ([]UrlFlag, error) {
@@ -678,11 +630,9 @@ func (q *Queries) GetURLFlagsByURL(ctx context.Context, urlID int64) ([]UrlFlag,
 }
 
 const GetURLs = `-- name: GetURLs :many
-= ?;
-
 SELECT id, full_url, domain_id, path, query_string, status_code, content_type,
        source, batch_id, created_at, updated_at
-FROM urls ORDER BY created_at DESC LIMIT ? OFFS
+FROM urls ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
 type GetURLsParams struct {
@@ -726,9 +676,7 @@ func (q *Queries) GetURLs(ctx context.Context, arg GetURLsParams) ([]Url, error)
 }
 
 const HasInterruptedSession = `-- name: HasInterruptedSession :one
-ng';
-
-SELECT COUNT(*) FROM pipeline_state WHERE status = 'process
+SELECT COUNT(*) FROM pipeline_state WHERE status = 'processing'
 `
 
 func (q *Queries) HasInterruptedSession(ctx context.Context) (int64, error) {
@@ -739,10 +687,9 @@ func (q *Queries) HasInterruptedSession(ctx context.Context) (int64, error) {
 }
 
 const HeartbeatProcess = `-- name: HeartbeatProcess :exec
-= ?;
 UPDATE processes
 SET last_heartbeat = CURRENT_TIMESTAMP
-WHERE id
+WHERE id = ?
 `
 
 func (q *Queries) HeartbeatProcess(ctx context.Context, id int64) error {
@@ -751,10 +698,8 @@ func (q *Queries) HeartbeatProcess(ctx context.Context, id int64) error {
 }
 
 const InsertBatch = `-- name: InsertBatch :exec
-= ?;
 
-
-INSERT INTO batches (node_id, item_count, status) VALUES (?, ?, 'processi
+INSERT INTO batches (node_id, item_count, status) VALUES (?, ?, 'processing')
 `
 
 type InsertBatchParams struct {
@@ -771,10 +716,8 @@ func (q *Queries) InsertBatch(ctx context.Context, arg InsertBatchParams) error 
 }
 
 const InsertDownloadedFile = `-- name: InsertDownloadedFile :exec
-= ?;
 
-
-INSERT INTO downloaded_files (url_id, file_path, file_type, size_bytes, sha256) VALUES (?, ?, ?, ?
+INSERT INTO downloaded_files (url_id, file_path, file_type, size_bytes, sha256) VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertDownloadedFileParams struct {
@@ -800,11 +743,9 @@ func (q *Queries) InsertDownloadedFile(ctx context.Context, arg InsertDownloaded
 }
 
 const InsertFinding = `-- name: InsertFinding :exec
-= ?;
-
 
 INSERT INTO findings (domain_id, url_id, scanner, severity, title, description, evidence)
-VALUES (?, ?, ?, ?, ?, ?
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertFindingParams struct {
@@ -834,10 +775,8 @@ func (q *Queries) InsertFinding(ctx context.Context, arg InsertFindingParams) er
 }
 
 const InsertNote = `-- name: InsertNote :exec
-= ?;
 
-
-INSERT INTO notes (content) VALUES
+INSERT INTO notes (content) VALUES (?)
 `
 
 // ============================================================
@@ -849,10 +788,8 @@ func (q *Queries) InsertNote(ctx context.Context, content string) error {
 }
 
 const InsertOrIgnoreDNSRecord = `-- name: InsertOrIgnoreDNSRecord :exec
-ng';
 
-
-INSERT OR IGNORE INTO dns_records (domain_id, record_type, value, ttl, source) VALUES (?, ?, ?, ?
+INSERT OR IGNORE INTO dns_records (domain_id, record_type, value, ttl, source) VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertOrIgnoreDNSRecordParams struct {
@@ -878,10 +815,8 @@ func (q *Queries) InsertOrIgnoreDNSRecord(ctx context.Context, arg InsertOrIgnor
 }
 
 const InsertOrIgnoreIP = `-- name: InsertOrIgnoreIP :exec
-= ?;
 
-
-INSERT OR IGNORE INTO ips (address) VALUES
+INSERT OR IGNORE INTO ips (address) VALUES (?)
 `
 
 // ============================================================
@@ -893,10 +828,9 @@ func (q *Queries) InsertOrIgnoreIP(ctx context.Context, address string) error {
 }
 
 const InsertOrIgnorePipelineState = `-- name: InsertOrIgnorePipelineState :exec
-ULL;
 
 INSERT OR IGNORE INTO pipeline_state (item_type, item_id, node_id, status)
-VALUES (?, ?, ?, 'pendi
+VALUES (?, ?, ?, 'pending')
 `
 
 type InsertOrIgnorePipelineStateParams struct {
@@ -914,11 +848,9 @@ func (q *Queries) InsertOrIgnorePipelineState(ctx context.Context, arg InsertOrI
 }
 
 const InsertOrIgnorePort = `-- name: InsertOrIgnorePort :exec
-= ?;
-
 
 INSERT OR IGNORE INTO ports (ip_id, port, protocol, service, banner, source)
-VALUES (?, ?, ?, ?, ?
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertOrIgnorePortParams struct {
@@ -946,11 +878,9 @@ func (q *Queries) InsertOrIgnorePort(ctx context.Context, arg InsertOrIgnorePort
 }
 
 const InsertOrIgnoreTechStack = `-- name: InsertOrIgnoreTechStack :exec
-= ?;
-
 
 INSERT OR IGNORE INTO techstack (domain_id, technology, version, category, source)
-VALUES (?, ?, ?, ?
+VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertOrIgnoreTechStackParams struct {
@@ -976,10 +906,8 @@ func (q *Queries) InsertOrIgnoreTechStack(ctx context.Context, arg InsertOrIgnor
 }
 
 const InsertOrIgnoreURLFlag = `-- name: InsertOrIgnoreURLFlag :exec
-= ?;
 
-
-INSERT OR IGNORE INTO url_flags (url_id, flag_type, flag_value, source) VALUES (?, ?, ?
+INSERT OR IGNORE INTO url_flags (url_id, flag_type, flag_value, source) VALUES (?, ?, ?, ?)
 `
 
 type InsertOrIgnoreURLFlagParams struct {
@@ -1003,11 +931,9 @@ func (q *Queries) InsertOrIgnoreURLFlag(ctx context.Context, arg InsertOrIgnoreU
 }
 
 const InsertOrTouchDomain = `-- name: InsertOrTouchDomain :exec
-= ?;
-
 
 INSERT INTO domains (name, source, batch_id) VALUES (?, ?, ?)
-ON CONFLICT(name) DO UPDATE SET updated_at = CURRENT_TIMES
+ON CONFLICT(name) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
 `
 
 type InsertOrTouchDomainParams struct {
@@ -1025,11 +951,9 @@ func (q *Queries) InsertOrTouchDomain(ctx context.Context, arg InsertOrTouchDoma
 }
 
 const InsertOrTouchURL = `-- name: InsertOrTouchURL :exec
-= ?;
-
 
 INSERT INTO urls (full_url, source, domain_id, batch_id) VALUES (?, ?, ?, ?)
-ON CONFLICT(full_url) DO UPDATE SET updated_at = CURRENT_TIMES
+ON CONFLICT(full_url) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
 `
 
 type InsertOrTouchURLParams struct {
@@ -1053,11 +977,9 @@ func (q *Queries) InsertOrTouchURL(ctx context.Context, arg InsertOrTouchURLPara
 }
 
 const InsertProcess = `-- name: InsertProcess :exec
-ngs;
-
 
 INSERT INTO processes (name, command, pid, node_id, batch_id, status, stdout_path, stderr_path)
-VALUES (?, ?, ?, ?, ?, 'running', ?
+VALUES (?, ?, ?, ?, ?, 'running', ?, ?)
 `
 
 type InsertProcessParams struct {
@@ -1089,7 +1011,7 @@ func (q *Queries) InsertProcess(ctx context.Context, arg InsertProcessParams) er
 const InsertScopeRule = `-- name: InsertScopeRule :exec
 
 
-INSERT INTO scope_rules (pattern, type, in_scope) VALUES (?, ?
+INSERT INTO scope_rules (pattern, type, in_scope) VALUES (?, ?, ?)
 `
 
 type InsertScopeRuleParams struct {
@@ -1099,7 +1021,7 @@ type InsertScopeRuleParams struct {
 }
 
 // Queries for paravizor store.
-// All parameters use ? placeholders — never interpolated — making injection impossible.
+// All parameters use ? placeholders - never interpolated - making injection impossible.
 // Note: sqlc's SQLite parser does not support RETURNING or ON CONFLICT...DO UPDATE,
 // so upserts use INSERT OR IGNORE + UPDATE, and inserted IDs are retrieved via last_insert_rowid().
 // ============================================================
@@ -1111,9 +1033,7 @@ func (q *Queries) InsertScopeRule(ctx context.Context, arg InsertScopeRuleParams
 }
 
 const ResetProcessingItems = `-- name: ResetProcessingItems :execresult
-T ?;
-
-UPDATE pipeline_state SET status = 'pending', started_at = NULL WHERE status = 'process
+UPDATE pipeline_state SET status = 'pending', started_at = NULL WHERE status = 'processing'
 `
 
 func (q *Queries) ResetProcessingItems(ctx context.Context) (sql.Result, error) {
@@ -1121,10 +1041,8 @@ func (q *Queries) ResetProcessingItems(ctx context.Context) (sql.Result, error) 
 }
 
 const UpdateDNSRecord = `-- name: UpdateDNSRecord :exec
-?);
-
 UPDATE dns_records SET ttl = ?, source = ?
-WHERE domain_id = ? AND record_type = ? AND value
+WHERE domain_id = ? AND record_type = ? AND value = ?
 `
 
 type UpdateDNSRecordParams struct {
@@ -1147,9 +1065,7 @@ func (q *Queries) UpdateDNSRecord(ctx context.Context, arg UpdateDNSRecordParams
 }
 
 const UpdateDomainLiveness = `-- name: UpdateDomainLiveness :exec
-ins;
-
-UPDATE domains SET is_live = ?, ip = ?, updated_at = CURRENT_TIMESTAMP WHERE id
+UPDATE domains SET is_live = ?, ip = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 `
 
 type UpdateDomainLivenessParams struct {
@@ -1164,9 +1080,7 @@ func (q *Queries) UpdateDomainLiveness(ctx context.Context, arg UpdateDomainLive
 }
 
 const UpdateNote = `-- name: UpdateNote :exec
-ESC;
-
-UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id
+UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 `
 
 type UpdateNoteParams struct {
@@ -1180,11 +1094,9 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) error {
 }
 
 const UpdatePipelineState = `-- name: UpdatePipelineState :exec
-g');
-
 UPDATE pipeline_state
 SET status = ?, started_at = ?, completed_at = ?, error = ?
-WHERE item_id = ? AND item_type = ? AND node_id
+WHERE item_id = ? AND item_type = ? AND node_id = ?
 `
 
 type UpdatePipelineStateParams struct {
@@ -1211,10 +1123,8 @@ func (q *Queries) UpdatePipelineState(ctx context.Context, arg UpdatePipelineSta
 }
 
 const UpdatePort = `-- name: UpdatePort :exec
-?);
-
 UPDATE ports SET service = ?, banner = ?, source = ?
-WHERE ip_id = ? AND port = ? AND protocol
+WHERE ip_id = ? AND port = ? AND protocol = ?
 `
 
 type UpdatePortParams struct {
@@ -1239,10 +1149,8 @@ func (q *Queries) UpdatePort(ctx context.Context, arg UpdatePortParams) error {
 }
 
 const UpdateTechStack = `-- name: UpdateTechStack :exec
-?);
-
 UPDATE techstack SET version = ?, category = ?, source = ?
-WHERE domain_id = ? AND technology
+WHERE domain_id = ? AND technology = ?
 `
 
 type UpdateTechStackParams struct {
@@ -1265,11 +1173,9 @@ func (q *Queries) UpdateTechStack(ctx context.Context, arg UpdateTechStackParams
 }
 
 const UpdateURLDetails = `-- name: UpdateURLDetails :exec
-rls;
-
 UPDATE urls
 SET status_code = ?, content_type = ?, path = ?, query_string = ?, updated_at = CURRENT_TIMESTAMP
-WHERE id
+WHERE id = ?
 `
 
 type UpdateURLDetailsParams struct {
@@ -1292,9 +1198,7 @@ func (q *Queries) UpdateURLDetails(ctx context.Context, arg UpdateURLDetailsPara
 }
 
 const UpdateURLFlag = `-- name: UpdateURLFlag :exec
-?);
-
-UPDATE url_flags SET source = ? WHERE url_id = ? AND flag_type = ? AND flag_value
+UPDATE url_flags SET source = ? WHERE url_id = ? AND flag_type = ? AND flag_value = ?
 `
 
 type UpdateURLFlagParams struct {

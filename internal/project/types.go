@@ -20,3 +20,7 @@ type RateLimitConfig struct {
 	BurstReservePercentage int      `yaml:"burst_reserve_percentage" validate:"required,gte=0,lte=100"`
 	BurstReserveMin        int      `yaml:"burst_reserve_min" validate:"required,gte=0"`
 }
+
+type ProjectWrapper struct {
+	Project ProjectConfig `yaml:"project"`
+}

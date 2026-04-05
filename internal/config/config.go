@@ -7,13 +7,17 @@ import (
 	"path/filepath"
 
 	"charm.land/log/v2"
-	"github.com/bitravens/paravizor/v1/internal/engine"
-	"github.com/bitravens/paravizor/v1/internal/theme"
 	"github.com/bitravens/paravizor/v1/internal/utils"
 	yamler "gopkg.in/yaml.v3"
 )
 
-func getDefaultConfig() Config {
+// prvzrConfigDir returns the paravizor config directory ($XDG_CONFIG_HOME/paravizor).
+// Kept as a thin wrapper here to avoid coupling callers to utils directly.
+func prvzrConfigDir() (string, error) {
+	return utils.PrvzrConfigDir()
+}
+
+func GetDefaultConfig() Config {
 	return Config{
 		APIKeys:             make(map[string]string),
 		Theme:               "default",
@@ -44,54 +48,23 @@ Original error: %v`,
 // creates the directory if needed, and writes a default config if the file
 // does not yet exist.
 func GetGlobalConfigPath() (string, error) {
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		configDir = filepath.Join(homeDir, DEFAULT_XDG_CONFIG_DIRNAME)
+	dir, err := prvzrConfigDir()
+	if err != nil {
+		return "", err
 	}
 
-	configFilePath := filepath.Join(configDir, PrvzrDir, ConfigFileName)
+	if err := utils.EnsureDir(dir); err != nil {
+		return "", configError{configDir: dir, err: err}
+	}
+
+	configFilePath := filepath.Join(dir, ConfigFileName)
 	log.Debug("using global config path", "path", configFilePath)
-
-	dir := filepath.Dir(configFilePath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err = os.MkdirAll(dir, os.ModePerm); err != nil {
-			return "", configError{configDir: dir, err: err}
-		}
-	}
 
 	if err := createConfigFileIfMissing(configFilePath); err != nil {
 		return "", configError{configDir: dir, err: err}
 	}
 
-	if err := initExternalDirs(dir); err != nil {
-		log.Error("Failed to initialize external resource directories", "err", err)
-	}
-
 	return configFilePath, nil
-}
-
-func initExternalDirs(baseDir string) error {
-	themesDir := filepath.Join(baseDir, "themes")
-	if err := os.MkdirAll(themesDir, os.ModePerm); err != nil {
-		return err
-	}
-	if err := theme.WriteDefaultTheme(filepath.Join(themesDir, "default.yaml")); err != nil {
-		log.Warn("Failed writing default theme", "err", err)
-	}
-
-	pipelinesDir := filepath.Join(baseDir, "pipelines")
-	if err := os.MkdirAll(pipelinesDir, os.ModePerm); err != nil {
-		return err
-	}
-	if err := engine.WriteDefaultPipeline(filepath.Join(pipelinesDir, "default.yaml")); err != nil {
-		log.Warn("Failed writing default pipeline", "err", err)
-	}
-
-	return nil
 }
 
 func createConfigFileIfMissing(configFilePath string) error {
@@ -109,16 +82,16 @@ func createConfigFileIfMissing(configFilePath string) error {
 }
 
 func writeDefaultConfigContents(f *os.File) error {
-	data, err := yamler.Marshal(getDefaultConfig())
+	data, err := yamler.Marshal(ConfigWrapper{Config: GetDefaultConfig()})
 	if err != nil {
 		return err
 	}
-	// Use utils.WriteYAML pattern but we already have the file handle.
 	_, err = f.Write(data)
 	return err
 }
 
 // WriteConfig serializes cfg to the given path using an atomic write.
+// The output YAML is wrapped under the "paravizor:" top-level key.
 func WriteConfig(cfgPath string, cfg Config) error {
-	return utils.WriteYAML(cfgPath, cfg)
+	return utils.WriteYAML(cfgPath, ConfigWrapper{Config: cfg})
 }

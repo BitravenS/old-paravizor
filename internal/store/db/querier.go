@@ -90,7 +90,7 @@ type Querier interface {
 	// ============================================================
 	InsertProcess(ctx context.Context, arg InsertProcessParams) error
 	// Queries for paravizor store.
-	// All parameters use ? placeholders — never interpolated — making injection impossible.
+	// All parameters use ? placeholders - never interpolated - making injection impossible.
 	// Note: sqlc's SQLite parser does not support RETURNING or ON CONFLICT...DO UPDATE,
 	// so upserts use INSERT OR IGNORE + UPDATE, and inserted IDs are retrieved via last_insert_rowid().
 	// ============================================================

@@ -49,11 +49,21 @@ func MergeYAMLFiles(skipMissing bool, paths ...string) (*koanf.Koanf, error) {
 	return k, nil
 }
 
-// UnmarshalKoanf unmarshals k into a value of type T, starting from defaults.
+// UnmarshalKoanf unmarshals k into a value of type T from the root, starting from defaults.
 // Struct tags used for mapping: "yaml".
 func UnmarshalKoanf[T any](k *koanf.Koanf, defaults T) (T, error) {
+	return UnmarshalKoanfAt(k, "", defaults)
+}
+
+// UnmarshalKoanfAt unmarshals k into a value of type T starting from a specific
+// dotted-key path (e.g. "paravizor" for a file with a top-level "paravizor:" block).
+// Pass "" to unmarshal from the root. Struct tags used for mapping: "yaml".
+func UnmarshalKoanfAt[T any](k *koanf.Koanf, path string, defaults T) (T, error) {
 	v := defaults
-	if err := k.UnmarshalWithConf("", &v, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+	if err := k.UnmarshalWithConf(path, &v, koanf.UnmarshalConf{Tag: "yaml"}); err != nil {
+		if path != "" {
+			return v, fmt.Errorf("unmarshal config at %q: %w", path, err)
+		}
 		return v, fmt.Errorf("unmarshal config: %w", err)
 	}
 	if err := Validator.Struct(v); err != nil {
