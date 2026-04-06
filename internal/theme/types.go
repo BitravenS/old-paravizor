@@ -9,6 +9,7 @@ type Color string
 type ThemeTextConfig struct {
 	Primary   Color `yaml:"primary,omitempty" validate:"omitzero,omitempty,color"`
 	Secondary Color `yaml:"secondary"                  validate:"omitempty,color"`
+	Accent    Color `yaml:"accent"                     validate:"omitempty,color"`
 	Inverted  Color `yaml:"inverted"                   validate:"omitempty,color"`
 	Faint     Color `yaml:"faint"                      validate:"omitempty,color"`
 	Warning   Color `yaml:"warning"                    validate:"omitempty,color"`
@@ -32,6 +33,10 @@ type ThemeConfig struct {
 	Border     ThemeBorderConfig     `yaml:"border,omitempty"     validate:"required,omitempty"`
 }
 
+type ThemeWrapper struct {
+	Theme ThemeConfig `yaml:"theme"`
+}
+
 type Theme struct {
 	SelectedBackground compat.AdaptiveColor
 	PrimaryBorder      compat.AdaptiveColor
@@ -40,6 +45,7 @@ type Theme struct {
 	FaintText          compat.AdaptiveColor
 	PrimaryText        compat.AdaptiveColor
 	SecondaryText      compat.AdaptiveColor
+	AccentText         compat.AdaptiveColor
 	InvertedText       compat.AdaptiveColor
 	SuccessText        compat.AdaptiveColor
 	WarningText        compat.AdaptiveColor

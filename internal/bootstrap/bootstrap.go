@@ -74,7 +74,7 @@ func Init() error {
 		}
 	}
 	if warn, err := validateDir(themesDir, func(path string) error {
-		_, err := utils.ParseYAML[theme.ThemeConfig](path)
+		_, err := utils.ParseYAML[theme.ThemeWrapper](path)
 		return err
 	}); err != nil {
 		return fmt.Errorf("failed to validate themes directory %q: %w (suggested fix: ensure the directory is readable)", themesDir, err)

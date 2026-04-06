@@ -29,7 +29,7 @@ func LoadTheme(cfg *ThemeConfig) *Theme {
 	override(&t.SuccessText, cfg.Text.Success)
 	override(&t.WarningText, cfg.Text.Warning)
 	override(&t.ErrorText, cfg.Text.Error)
-
+	override(&t.AccentText, cfg.Text.Accent)
 	override(&t.PrimaryBorder, cfg.Border.Primary)
 	override(&t.SecondaryBorder, cfg.Border.Secondary)
 	override(&t.FaintBorder, cfg.Border.Faint)
@@ -47,49 +47,66 @@ func (c Color) IsZero() bool {
 	return c.String() == ""
 }
 
+// Light theme is based on Catpuccin Latte, dark theme is based on Catpuccin Mocha
 var DefaultTheme = &Theme{
+	// Subtext 0
 	PrimaryBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(8),
-		Dark:  lipgloss.ANSIColor(8),
+		Light: lipgloss.Color("#6c6f85"),
+		Dark:  lipgloss.Color("#a6adc8"),
 	},
+	// Mauve
 	SecondaryBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(8),
-		Dark:  lipgloss.ANSIColor(7),
+		Light: lipgloss.Color("#8839ef"),
+		Dark:  lipgloss.Color("#cba6f7"),
 	},
+	// Surface 1
 	SelectedBackground: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(7),
-		Dark:  lipgloss.ANSIColor(236),
+		Light: lipgloss.Color("#bcc0cc"),
+		Dark:  lipgloss.Color("#45475a"),
 	},
+	//Surface 2
 	FaintBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(254),
-		Dark:  lipgloss.ANSIColor(234),
+		Light: lipgloss.Color("#acb0be"),
+		Dark:  lipgloss.Color("#585b70"),
 	},
+	// Text
 	PrimaryText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(0),
-		Dark:  lipgloss.ANSIColor(15),
+		Light: lipgloss.Color("#4c4f69"),
+		Dark:  lipgloss.Color("#cdd6f4"),
 	},
+	// Lavender
 	SecondaryText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(244),
-		Dark:  lipgloss.ANSIColor(251),
+		Light: lipgloss.Color("#7287fd"),
+		Dark:  lipgloss.Color("#b4befe"),
 	},
+	// Teal
+	AccentText: compat.AdaptiveColor{
+		Light: lipgloss.Color("#179299"),
+		Dark:  lipgloss.Color("#94e2d5"),
+	},
+	// overlay 1
 	FaintText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(7),
-		Dark:  lipgloss.ANSIColor(245),
+		Light: lipgloss.Color("#8c8fa1"),
+		Dark:  lipgloss.Color("#7f849c"),
 	},
+	// Base
 	InvertedText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(15),
-		Dark:  lipgloss.ANSIColor(236),
+		Light: lipgloss.Color("#eff1f5"),
+		Dark:  lipgloss.Color("#1e1e2e"),
 	},
+	// Green
 	SuccessText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(10),
-		Dark:  lipgloss.ANSIColor(10),
+		Light: lipgloss.Color("#40a02b"),
+		Dark:  lipgloss.Color("#a6e3a1"),
 	},
+	// Yellow
 	WarningText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(11),
-		Dark:  lipgloss.ANSIColor(11),
+		Light: lipgloss.Color("#df8e1d"),
+		Dark:  lipgloss.Color("#f9e2af"),
 	},
+	// Red
 	ErrorText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(1),
-		Dark:  lipgloss.ANSIColor(9),
+		Light: lipgloss.Color("#d20f39"),
+		Dark:  lipgloss.Color("#f38ba8"),
 	},
 }

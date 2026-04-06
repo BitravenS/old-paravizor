@@ -28,6 +28,17 @@ func WriteDefaultPipeline(path string) error {
 				Tool:     "subfinder",
 				Consumes: "domain",
 				Produces: "domain",
+				Routes: []RouteConfig{
+					{To: "dnsx-live"},
+				},
+			},
+			{
+				ID:       "dnsx-live",
+				Name:     "DNSX Live",
+				Stage:    1,
+				Tool:     "dnsx-live",
+				Consumes: "domain",
+				Produces: "domain",
 			},
 		},
 	}

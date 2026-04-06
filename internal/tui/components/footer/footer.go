@@ -79,15 +79,28 @@ type Model struct {
 	memMB    float64
 	dbSizeMB float64
 	hasDB    bool
+	hasPerf  bool
 }
 
 func NewModel(ctx *context.ProgramContext, s *store.Store) Model {
 	return Model{
-		ctx:     ctx,
-		store:   s,
-		cpuProg: progress.New(progress.WithColors(lipgloss.Color("#FF7CCB"), lipgloss.Color("#FDFF8C"))),
-		memProg: progress.New(progress.WithColors(lipgloss.Color("#8CFFB8"), lipgloss.Color("#7CFFF6"))),
-		dbProg:  progress.New(progress.WithColors(lipgloss.Color("#7C95FF"), lipgloss.Color("#B88CFF"))),
+		ctx:   ctx,
+		store: s,
+		cpuProg: progress.New(progress.WithColors(
+			ctx.Theme.WarningText,
+			ctx.Theme.SecondaryText,
+		),
+			progress.WithoutPercentage()),
+		memProg: progress.New(progress.WithColors(
+			ctx.Theme.SuccessText,
+			ctx.Theme.SecondaryText,
+		),
+			progress.WithoutPercentage()),
+		dbProg: progress.New(progress.WithColors(
+			ctx.Theme.PrimaryText,
+			ctx.Theme.SecondaryText,
+		),
+			progress.WithoutPercentage()),
 	}
 }
 
@@ -106,9 +119,17 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		cmds = append(cmds, TickMetrics(), FetchPerformanceMetrics(m.ctx, m.store))
 
 	case PerformanceTickMsg:
-		m.cpuPct = msg.CPUPercent
-		m.memPct = msg.MemPercent
-		m.memMB = msg.MemMB
+		if !m.hasPerf {
+			m.cpuPct = msg.CPUPercent
+			m.memPct = msg.MemPercent
+			m.memMB = msg.MemMB
+			m.hasPerf = true
+		} else {
+			const alpha = 0.10
+			m.cpuPct = m.cpuPct + alpha*(msg.CPUPercent-m.cpuPct)
+			m.memPct = m.memPct + alpha*(msg.MemPercent-m.memPct)
+			m.memMB = m.memMB + alpha*(msg.MemMB-m.memMB)
+		}
 		m.dbSizeMB = msg.DBSizeMB
 		m.hasDB = msg.HasDB
 	}
@@ -120,9 +141,17 @@ func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 
-	colWidth := width / 3
+	colWidth1 := width / 3
+	colWidth2 := width / 3
+	perfColWidth := width - colWidth1 - colWidth2
 
-	barWidth := colWidth - 10
+	// Keep progress bars on the same visual row as label/value by sizing
+	// against the performance column's inner content width.
+	const (
+		labelWidth = 3
+		valueWidth = 8
+	)
+	barWidth := perfColWidth - 2 /* border */ - 2 /* content pad */ - labelWidth - 1 - valueWidth - 1 - 1 /* right inner pad */
 	if barWidth < 4 {
 		barWidth = 4
 	}
@@ -187,7 +216,7 @@ func (m Model) View() string {
 
 	projectContent := fmt.Sprintf("\nName: %s\nTargets: %d\nPath: %s", projectName, projectTargets, projectPath)
 	projectView := borderWithTitle(pad.Render(projectContent), "Project", colWidth1, m.height,
-		m.ctx.Theme.PrimaryBorder, context.LogoColor)
+		m.ctx.Theme.PrimaryBorder, m.ctx.Theme.SecondaryText)
 
 	pipelineName := "No pipeline loaded"
 	stageCount := 0
@@ -199,43 +228,62 @@ func (m Model) View() string {
 	}
 	pipelineContent := fmt.Sprintf("\nName: %s\nStages: %d\nNodes: %d", pipelineName, stageCount, nodeCount)
 	pipelineView := borderWithTitle(pad.Render(pipelineContent), "Pipeline", colWidth2, m.height,
-		m.ctx.Theme.PrimaryBorder, context.LogoColor)
+		m.ctx.Theme.PrimaryBorder, m.ctx.Theme.SecondaryText)
 
-	// Performance: single-line rows (label + bar + value)
+	// Performance: single-line rows (label + value + bar)
 	labelStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText)
 	valueStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText)
+	labelCol := lipgloss.NewStyle().Width(3)
+	valueCol := lipgloss.NewStyle().Width(8).Align(lipgloss.Right)
 
-	cpuRow := fmt.Sprintf("%s %s %s",
-		labelStyle.Render("CPU"),
+	cpuRow := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		labelCol.Render(labelStyle.Render("CPU")),
+		" ",
+		valueCol.Render(valueStyle.Render(fmt.Sprintf("%5.1f%%", m.cpuPct))),
+		" ",
 		m.cpuProg.ViewAs(clamp01(m.cpuPct/100)),
-		valueStyle.Render(fmt.Sprintf("%5.1f%%", m.cpuPct)),
+		" ",
 	)
-	memRow := fmt.Sprintf("%s %s %s",
-		labelStyle.Render("MEM"),
+	memRow := lipgloss.JoinHorizontal(
+		lipgloss.Left,
+		labelCol.Render(labelStyle.Render("MEM")),
+		" ",
+		valueCol.Render(valueStyle.Render(fmt.Sprintf("%.1fMB", m.memMB))),
+		" ",
 		m.memProg.ViewAs(clamp01(m.memPct/100)),
-		valueStyle.Render(fmt.Sprintf("%5.1f%% / %.1fMB", m.memPct, m.memMB)),
+		" ",
 	)
 
 	var dbRow string
 	if m.hasDB {
-		dbRow = fmt.Sprintf("%s %s %s",
-			labelStyle.Render("DB "),
+		dbRow = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			labelCol.Render(labelStyle.Render("DB")),
+			" ",
+			valueCol.Render(valueStyle.Render(fmt.Sprintf("%.1fMB", m.dbSizeMB))),
+			" ",
 			m.dbProg.ViewAs(clamp01(m.dbSizeMB/dbCapMB)),
-			valueStyle.Render(fmt.Sprintf("%.1fMB", m.dbSizeMB)),
 		)
 	} else {
-		greyProg := progress.New(progress.WithColors(lipgloss.Color("#555555"), lipgloss.Color("#555555")))
+		greyProg := progress.New(
+			progress.WithColors(m.ctx.Theme.FaintText, m.ctx.Theme.FaintText),
+			progress.WithoutPercentage(),
+		)
 		greyProg.SetWidth(m.dbProg.Width())
-		dbRow = fmt.Sprintf("%s %s %s",
-			labelStyle.Render("DB "),
+		dbRow = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			labelCol.Render(labelStyle.Render("DB")),
+			" ",
+			valueCol.Render(valueStyle.Render("N/A")),
+			" ",
 			greyProg.ViewAs(0),
-			valueStyle.Render("N/A"),
 		)
 	}
 
 	perfContent := "\n" + strings.Join([]string{cpuRow, memRow, dbRow}, "\n\n")
 	perfView := borderWithTitle(pad.Render(perfContent), "Performance", colWidth3, m.height,
-		m.ctx.Theme.PrimaryBorder, context.LogoColor)
+		m.ctx.Theme.PrimaryBorder, m.ctx.Theme.SecondaryText)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, projectView, pipelineView, perfView)
 }

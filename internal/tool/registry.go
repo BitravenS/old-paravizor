@@ -173,6 +173,9 @@ func parseDefs(data []byte) ([]*ToolConfig, error) {
 			return nil, fmt.Errorf("invalid tool %q: %w", w.Tool.Name, err)
 		}
 		def := w.Tool
+		if err := ValidateTool(&def); err != nil {
+			return nil, fmt.Errorf("tool %q failed validation: %w", def.Name, err)
+		}
 		defs = append(defs, &def)
 	}
 

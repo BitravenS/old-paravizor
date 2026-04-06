@@ -2,7 +2,6 @@ package utils
 
 import (
 	"os"
-	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
@@ -66,7 +65,7 @@ func aggregateProcess(p *process.Process, seen map[int32]struct{}, totalCPU *flo
 	}
 	seen[pid] = struct{}{}
 
-	if c, err := p.Percent(200 * time.Millisecond); err == nil {
+	if c, err := p.CPUPercent(); err == nil {
 		*totalCPU += c
 	}
 	if m, err := p.MemoryInfo(); err == nil {

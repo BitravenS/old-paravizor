@@ -49,7 +49,7 @@ func (m Model) View() string {
 	// Title: ///paravizor/version/project_name///
 	titleText := fmt.Sprintf("///paravizor/%s/%s///", m.ctx.Version, projectName)
 	titleStyle := lipgloss.NewStyle().
-		Foreground(context.LogoColor).
+		Foreground(m.ctx.Theme.PrimaryText).
 		Bold(true).
 		Padding(0, 2)
 	title := titleStyle.Render(titleText)

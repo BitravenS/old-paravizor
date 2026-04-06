@@ -33,11 +33,11 @@ func LoadExternalTheme(name string) (*ThemeConfig, error) {
 		return nil, err
 	}
 
-	cfg, err := utils.ParseYAML[ThemeConfig](themePath)
+	w, err := utils.ParseYAML[ThemeWrapper](themePath)
 	if err != nil {
 		log.Error("Failed to parse theme, falling back to default", "path", themePath, "err", err)
 		return nil, err
 	}
 
-	return &cfg, nil
+	return &w.Theme, nil
 }

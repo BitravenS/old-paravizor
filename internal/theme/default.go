@@ -12,23 +12,24 @@ func WriteDefaultTheme(path string) error {
 
 	cfg := ThemeConfig{
 		Text: ThemeTextConfig{
-			Primary:   "#000000", // Will be converted to Adaptive internally but as an example
-			Secondary: "#555555",
-			Faint:     "#888888",
-			Inverted:  "#ffffff",
-			Success:   "#00ff00",
-			Warning:   "#ffff00",
-			Error:     "#ff0000",
+			Primary:   "#cdd6f4", // Catppuccin Mocha — Text
+			Secondary: "#b4befe", // Catppuccin Mocha — Lavender
+			Accent:    "#94e2d5", // Catppuccin Mocha — Teal
+			Faint:     "#7f849c", // Catppuccin Mocha — Overlay 1
+			Inverted:  "#1e1e2e", // Catppuccin Mocha — Base
+			Success:   "#a6e3a1", // Catppuccin Mocha — Green
+			Warning:   "#f9e2af", // Catppuccin Mocha — Yellow
+			Error:     "#f38ba8", // Catppuccin Mocha — Red
 		},
 		Border: ThemeBorderConfig{
-			Primary:   "#444444",
-			Secondary: "#222222",
-			Faint:     "#111111",
+			Primary:   "#a6adc8", // Catppuccin Mocha — Subtext 0
+			Secondary: "#cba6f7", // Catppuccin Mocha — Mauve
+			Faint:     "#585b70", // Catppuccin Mocha — Surface 2
 		},
 		Background: ThemeBackgroundConfig{
-			Selected: "#aaaaaa",
+			Selected: "#45475a", // Catppuccin Mocha — Surface 1
 		},
 	}
 
-	return utils.WriteYAML(path, cfg)
+	return utils.WriteYAML(path, ThemeWrapper{Theme: cfg})
 }

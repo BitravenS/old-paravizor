@@ -16,6 +16,10 @@ import (
 	"github.com/bitravens/paravizor/v1/internal/tool"
 )
 
+const (
+	LIMIT = 150_000
+)
+
 // Engine orchestrates pipeline execution.
 type Engine struct {
 	dag     *DAG
@@ -141,98 +145,100 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 
 	startTime := time.Now()
 	consumes := nodeCfg.Consumes
+	totalIn := 0
+	totalOut := 0
 
-	states, err := e.store.GetPendingItems(ctx, nodeID, consumes, 10000)
-	if err != nil {
-		return fmt.Errorf("get pending items: %w", err)
+	for {
+		states, err := e.store.GetPendingItems(ctx, nodeID, consumes, LIMIT)
+		if err != nil {
+			return fmt.Errorf("get pending items: %w", err)
+		}
+		if len(states) == 0 {
+			break
+		}
+
+		totalIn += len(states)
+
+		for _, state := range states {
+			now := time.Now()
+			st := sql.NullTime{Time: now, Valid: true}
+			err := e.store.SetPipelineState(ctx, &db.PipelineState{
+				ItemType:  state.ItemType,
+				ItemID:    state.ItemID,
+				NodeID:    nodeID,
+				Status:    "processing",
+				StartedAt: st,
+			})
+			if err != nil {
+				return fmt.Errorf("mark item processing: %w", err)
+			}
+		}
+
+		e.logger.Info("processing node", "node", nodeID, "items", len(states), "tool", nodeCfg.Tool)
+
+		inputStrings := e.resolveInputStrings(ctx, states, consumes)
+		var outputItems []items.Item
+
+		if nodeCfg.Tool != "" {
+			// Run external tool
+			outputItems, err = e.runSingle(ctx, nodeCfg, inputStrings)
+			if err != nil {
+				e.mu.Lock()
+				e.nodeStats[nodeID].Errors++
+				e.mu.Unlock()
+				return err
+			}
+		} else {
+			// Passthrough node (e.g. router or filter)
+			outputItems, err = e.statesAsItems(ctx, states, consumes)
+			if err != nil {
+				e.mu.Lock()
+				e.nodeStats[nodeID].Errors++
+				e.mu.Unlock()
+				return err
+			}
+		}
+
+		// Apply node-level filter regex (if any)
+		if nodeCfg.Filter != "" {
+			outputItems = filterItemsRegex(outputItems, nodeCfg.Filter)
+		}
+
+		// Mark input items as completed
+		for _, item := range states {
+			now := time.Now()
+			ct := sql.NullTime{Time: now, Valid: true}
+			e.store.SetPipelineState(ctx, &db.PipelineState{
+				ItemType:    item.ItemType,
+				ItemID:      item.ItemID,
+				NodeID:      nodeID,
+				Status:      "completed",
+				CompletedAt: ct,
+			})
+		}
+
+		// Store output items and enqueue for downstream nodes
+		stored, err := e.storeAndRoute(ctx, nodeCfg, outputItems)
+		if err != nil {
+			return fmt.Errorf("store and route: %w", err)
+		}
+		totalOut += stored
 	}
 
-	if len(states) == 0 {
+	if totalIn == 0 {
 		e.logger.Info("no pending items", "node", nodeID)
-		e.bus.Publish(events.NodeCompleted{
-			NodeID:   nodeID,
-			ItemsIn:  0,
-			ItemsOut: 0,
-			Duration: time.Since(startTime),
-			Time:     time.Now(),
-		})
-		return nil
-	}
-
-	for _, state := range states {
-		now := time.Now()
-		st := sql.NullTime{Time: now, Valid: true}
-		err := e.store.SetPipelineState(ctx, &db.PipelineState{
-			ItemType:  state.ItemType,
-			ItemID:    state.ItemID,
-			NodeID:    nodeID,
-			Status:    "processing",
-			StartedAt: st,
-		})
-		if err != nil {
-			return fmt.Errorf("mark item processing: %w", err)
-		}
-	}
-
-	e.logger.Info("processing node", "node", nodeID, "items", len(states), "tool", nodeCfg.Tool)
-
-	inputStrings := e.resolveInputStrings(ctx, states, consumes)
-	var outputItems []items.Item
-
-	if nodeCfg.Tool != "" {
-		// Run external tool
-		outputItems, err = e.runSingle(ctx, nodeCfg, inputStrings)
-		if err != nil {
-			e.mu.Lock()
-			e.nodeStats[nodeID].Errors++
-			e.mu.Unlock()
-			return err
-		}
-	} else {
-		// Passthrough node (e.g. router or filter)
-		outputItems, err = e.statesAsItems(ctx, states, consumes)
-		if err != nil {
-			e.mu.Lock()
-			e.nodeStats[nodeID].Errors++
-			e.mu.Unlock()
-			return err
-		}
-	}
-
-	// Apply node-level filter regex (if any)
-	if nodeCfg.Filter != "" {
-		outputItems = filterItemsRegex(outputItems, nodeCfg.Filter)
-	}
-
-	// Mark input items as completed
-	for _, item := range states {
-		now := time.Now()
-		ct := sql.NullTime{Time: now, Valid: true}
-		e.store.SetPipelineState(ctx, &db.PipelineState{
-			ItemType:    item.ItemType,
-			ItemID:      item.ItemID,
-			NodeID:      nodeID,
-			Status:      "completed",
-			CompletedAt: ct,
-		})
-	}
-
-	// Store output items and enqueue for downstream nodes
-	stored, err := e.storeAndRoute(ctx, nodeCfg, outputItems)
-	if err != nil {
-		return fmt.Errorf("store and route: %w", err)
 	}
 
 	e.mu.Lock()
-	e.nodeStats[nodeID].ItemsIn = len(states)
-	e.nodeStats[nodeID].ItemsOut = stored
+	e.nodeStats[nodeID].ItemsIn = totalIn
+	e.nodeStats[nodeID].ItemsOut = totalOut
 	e.nodeStats[nodeID].Duration = time.Since(startTime)
 	e.mu.Unlock()
 
 	e.bus.Publish(events.NodeCompleted{
 		NodeID:   nodeID,
-		ItemsIn:  len(states),
-		ItemsOut: stored,
+		ItemsIn:  totalIn,
+		ItemsOut: totalOut,
 		Duration: time.Since(startTime),
 		Time:     time.Now(),
 	})
@@ -344,8 +350,14 @@ func (e *Engine) storeAndRoute(ctx context.Context, nodeCfg *NodeConfig, out []i
 		switch v := item.(type) {
 		case *items.DomainItem:
 			itemID, err = e.store.InsertDomain(ctx, v.Name, v.SourceName, nil)
+			if err == nil {
+				e.updateDomainLivenessFromSource(ctx, itemID, v.SourceName)
+			}
 		case items.DomainItem:
 			itemID, err = e.store.InsertDomain(ctx, v.Name, v.SourceName, nil)
+			if err == nil {
+				e.updateDomainLivenessFromSource(ctx, itemID, v.SourceName)
+			}
 		case *items.URLItem:
 			itemID, err = e.store.InsertURL(ctx, v.FullURL, v.SourceName, nil, nil)
 		case items.URLItem:
@@ -452,4 +464,21 @@ func filterItemsRegex(in []items.Item, pattern string) []items.Item {
 		}
 	}
 	return out
+}
+
+func (e *Engine) updateDomainLivenessFromSource(ctx context.Context, domainID int64, source string) {
+	if source != "dnsx-live" {
+		return
+	}
+
+	isLive := true
+	if err := e.store.WriteTx(ctx, func(q *db.Queries) error {
+		return q.UpdateDomainLiveness(ctx, db.UpdateDomainLivenessParams{
+			ID:     domainID,
+			IsLive: &isLive,
+			Ip:     nil,
+		})
+	}); err != nil {
+		e.logger.Warn("failed to update domain liveness", "domain_id", domainID, "source", source, "error", err)
+	}
 }

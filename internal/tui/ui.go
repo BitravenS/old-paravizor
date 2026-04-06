@@ -1,17 +1,19 @@
 package tui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"charm.land/log/v2"
 	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/bitravens/paravizor/v1/internal/store"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/footer"
-	"github.com/bitravens/paravizor/v1/internal/tui/components/header"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/home"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/popup"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/projectview"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/settings"
+	"github.com/bitravens/paravizor/v1/internal/tui/components/sidebar"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/toaster"
 	"github.com/bitravens/paravizor/v1/internal/tui/context"
 )
@@ -20,22 +22,20 @@ type ViewState int
 
 const (
 	ViewStateHome ViewState = iota
-	ViewStateSettings
 	ViewStateProject
 )
 
 type Model struct {
-	Ctx          *context.ProgramContext
-	store        *store.Store
-	state        ViewState
-	homeView     home.Model
-	settingsView settings.Model
-	projectView  projectview.Model
-	headerView   header.Model
-	footerView   footer.Model
-	popupView    popup.Model
-	toasterView  toaster.Model
-	showFooter   bool
+	Ctx         *context.ProgramContext
+	store       *store.Store
+	state       ViewState
+	sidebarView sidebar.Model
+	homeView    home.Model
+	projectView projectview.Model
+	footerView  footer.Model
+	popupView   popup.Model
+	toasterView toaster.Model
+	showFooter  bool
 }
 
 func NewModel(location, version string, s *store.Store) Model {
@@ -47,42 +47,31 @@ func NewModel(location, version string, s *store.Store) Model {
 
 	state := ViewStateHome
 	showFooter := false
-	if location != "" {
-		state = ViewStateProject
-		showFooter = true // Show footer by default in projects
-	}
-
-	// If an existing project location was provided, open it directly.
 	projInitDir := ""
 	if location != "" {
+		state = ViewStateProject
+		showFooter = true
 		projInitDir = location
 	}
 
 	return Model{
-		Ctx:          ctx,
-		store:        s,
-		state:        state,
-		showFooter:   showFooter,
-		homeView:     home.NewModel(ctx),
-		settingsView: settings.NewModel(ctx),
-		projectView:  projectview.NewModel(ctx, projInitDir),
-		headerView:   header.NewModel(ctx),
-		footerView:   footer.NewModel(ctx, s),
-		popupView:    popup.NewModel(ctx),
-		toasterView:  toaster.NewModel(ctx),
+		Ctx:         ctx,
+		store:       s,
+		state:       state,
+		showFooter:  showFooter,
+		sidebarView: sidebar.NewModel(ctx),
+		homeView:    home.NewModel(ctx),
+		projectView: projectview.NewModel(ctx, projInitDir),
+		footerView:  footer.NewModel(ctx, s),
+		popupView:   popup.NewModel(ctx),
+		toasterView: toaster.NewModel(ctx),
 	}
-}
-
-func (m *Model) initScreen() tea.Msg {
-	return nil
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		tea.RequestBackgroundColor,
-		m.initScreen,
 		m.homeView.Init(),
-		m.settingsView.Init(),
 		m.projectView.Init(),
 		m.footerView.Init(),
 	)
@@ -92,12 +81,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	// Handle toaster global updates
+	// Toaster gets every message.
 	if tcmd := m.toasterView.Update(msg); tcmd != nil {
 		cmds = append(cmds, tcmd)
 	}
 
-	// Intercept popup keys if visible
+	// Popup consumes all input while open.
 	if m.popupView.IsVisible() {
 		handled, pcmd := m.popupView.Update(msg)
 		if pcmd != nil {
@@ -113,6 +102,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+
+		case "q":
+			if m.state == ViewStateHome {
+				return m, tea.Quit
+			}
+
+		case "f":
+			m.showFooter = !m.showFooter
+			m.recalculateLayout()
+			return m, nil
+
+		case "?":
+			helpText := m.renderHelp(m.state)
+			m.popupView.Show("Help", helpText, "esc  close")
+			return m, nil
+
+		case "s":
+			// Settings popup — fresh model each time so fields reflect current config.
+			sm := settings.NewModel(m.Ctx)
+			m.popupView.Show("Settings", sm.View(), "ctrl+s save  esc cancel")
+			return m, sm.Init()
+
 		case "ctrl+r":
 			if m.state == ViewStateProject {
 				if dir := m.projectView.ProjectDir(); dir != "" {
@@ -122,36 +133,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-		case "?":
-			if !m.popupView.IsVisible() {
-				m.popupView.Show("Help Menu", "Keybindings:\n\n?\tShow this help\nf\tToggle Footer\nq\tQuit")
-				return m, nil
-			}
-		case "q":
-			// If we are at home, quit. Otherwise might want to go back.
-			if m.state == ViewStateHome {
-				return m, tea.Quit
-			}
-			// But for settings, we only go back on 'esc' or cancel to not break input
-		case "f":
-			m.showFooter = !m.showFooter
-			m.recalculateLayout(msg)
-			return m, nil
 		}
+
 	case tea.WindowSizeMsg:
 		m.Ctx.Window.Width = msg.Width
 		m.Ctx.Window.Height = msg.Height
-		m.recalculateLayout(msg)
+		m.recalculateLayout()
+
+	// Sidebar: user selected a recent project.
+	case sidebar.ProjectSelectedMsg:
+		m.projectView = projectview.NewModel(m.Ctx, msg.Path)
+		m.Ctx.ProjectDir = msg.Path
+		if p, err := project.LoadProject(msg.Path); err == nil {
+			m.Ctx.Project = &p
+		}
+		m.state = ViewStateProject
+		m.recalculateLayout()
+		return m, m.projectView.Init()
+
+	// Home: user wants to create/open project.
 	case home.ActionMsg:
 		switch msg.Action.Type {
-		case home.ActionOpenSettings:
-			m.state = ViewStateSettings
-			return m, nil
 		case home.ActionCreateProject:
 			m.projectView = projectview.NewModel(m.Ctx, "")
 			m.Ctx.ProjectDir = ""
 			m.Ctx.Project = nil
 			m.state = ViewStateProject
+			m.recalculateLayout()
 			return m, m.projectView.Init()
 		case home.ActionOpenProject:
 			m.projectView = projectview.NewModel(m.Ctx, msg.Action.ProjectPath)
@@ -160,113 +168,158 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Ctx.Project = &p
 			}
 			m.state = ViewStateProject
+			m.recalculateLayout()
 			return m, m.projectView.Init()
 		}
+
+	// Home: user selected a pipeline or tool entry.
+	case home.CatalogSelectMsg:
+		content := home.RenderYAMLPopupContent(msg.Entry, m.Ctx)
+		m.popupView.Show(msg.Entry.Kind+": "+msg.Entry.Name, content, "esc  close")
+		return m, nil
+
+	// Project view: back to home.
 	case projectview.MsgBack:
 		m.state = ViewStateHome
+		m.recalculateLayout()
 		return m, nil
-	case settings.MsgCancel, settings.MsgSaveConfig:
-		m.state = ViewStateHome
 
-		if _, ok := msg.(settings.MsgSaveConfig); ok {
-			cmds = append(cmds, m.toasterView.Show("Settings saved successfully", toaster.TypeSuccess, 3*1000*1000*1000))
-		}
-
+	// Settings saved — show toast (settings is a popup, no state change needed).
+	case settings.MsgSaveConfig:
+		m.popupView.Hide()
+		cmds = append(cmds, m.toasterView.Show("Settings saved", toaster.TypeSuccess, 3_000_000_000))
 		return m, tea.Batch(cmds...)
+
+	case settings.MsgCancel:
+		m.popupView.Hide()
+		return m, nil
 	}
 
+	// Route input to active view.
 	switch m.state {
 	case ViewStateHome:
 		m.homeView, cmd = m.homeView.Update(msg)
 		cmds = append(cmds, cmd)
-	case ViewStateSettings:
-		m.settingsView, cmd = m.settingsView.Update(msg)
+		m.sidebarView, cmd = m.sidebarView.Update(msg)
 		cmds = append(cmds, cmd)
 	case ViewStateProject:
 		m.projectView, cmd = m.projectView.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
-	// Keep footer state/metrics alive even when hidden.
+	// Footer always ticks.
 	m.footerView, cmd = m.footerView.Update(msg)
 	cmds = append(cmds, cmd)
+
+	// Always recalculate after every update so sizing stays consistent.
+	m.recalculateLayout()
 
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) recalculateLayout(msg tea.Msg) {
-	// calculate heights
-	headerHeight := 1
+func (m *Model) recalculateLayout() {
 	footerHeight := 0
-
 	if m.showFooter {
 		footerHeight = m.Ctx.Window.Height / 4
 		m.footerView.SetSize(m.Ctx.Window.Width, footerHeight)
+	} else {
+		m.footerView.SetSize(m.Ctx.Window.Width, 0)
 	}
 
-	contentHeight := m.Ctx.Window.Height - headerHeight - footerHeight
+	contentHeight := m.Ctx.Window.Height - footerHeight
+	contentWidth := m.Ctx.Window.Width - sidebar.Width
 
-	// pass size down
-	sizeMsg := tea.WindowSizeMsg{Width: m.Ctx.Window.Width, Height: contentHeight}
+	m.sidebarView.SetHeight(contentHeight)
+
+	sizeMsg := tea.WindowSizeMsg{Width: contentWidth, Height: contentHeight}
 	m.homeView, _ = m.homeView.Update(sizeMsg)
-	m.settingsView, _ = m.settingsView.Update(sizeMsg)
 	m.projectView, _ = m.projectView.Update(sizeMsg)
 }
 
 func (m Model) View() tea.View {
-	var content string
+	th := m.Ctx.Theme
+	footerHeight := 0
+	var footerStr string
+	if m.showFooter {
+		footerHeight = m.Ctx.Window.Height / 4
+		footerStr = m.footerView.View()
+	}
 
+	contentHeight := m.Ctx.Window.Height - footerHeight
+	contentWidth := m.Ctx.Window.Width - sidebar.Width
+
+	// Sidebar (always visible)
+	sidebarStr := m.sidebarView.View()
+
+	// Main content
+	var mainStr string
 	switch m.state {
 	case ViewStateHome:
-		content = m.homeView.View()
-	case ViewStateSettings:
-		content = m.settingsView.View()
+		mainStr = m.homeView.View()
 	case ViewStateProject:
-		content = m.projectView.View()
+		mainStr = m.projectView.View()
 	}
 
-	// Update active tab based on state
-	if m.state == ViewStateProject {
-		m.headerView.ActiveTab = "Project"
-	} else {
-		m.headerView.ActiveTab = "Home"
-	}
-
-	header := m.headerView.View()
-
-	// Content area
-	contentHeight := m.Ctx.Window.Height - 1
-	var footer string
-	if m.showFooter {
-		footerHeight := m.Ctx.Window.Height / 4
-		contentHeight -= footerHeight
-		footer = m.footerView.View()
-	}
-
-	contentStyle := lipgloss.NewStyle().
-		Width(m.Ctx.Window.Width).
+	mainStyle := lipgloss.NewStyle().
+		Width(contentWidth).
 		Height(contentHeight).
-		Foreground(m.Ctx.Theme.PrimaryText)
+		Foreground(th.PrimaryText)
+	mainStr = mainStyle.Render(mainStr)
 
-	// Center home/settings; project view manages its own layout.
-	if m.state != ViewStateProject {
-		contentStyle = contentStyle.Align(lipgloss.Center, lipgloss.Center)
-	}
+	// Compose: sidebar | main, then footer below
+	row := lipgloss.JoinHorizontal(lipgloss.Top, sidebarStr, mainStr)
+	finalView := lipgloss.JoinVertical(lipgloss.Left, row, footerStr)
 
-	renderedContent := contentStyle.Render(content)
-
-	finalView := lipgloss.JoinVertical(lipgloss.Left, header, renderedContent, footer)
-
-	// Apply popup overlay
+	// Overlays
 	if m.popupView.IsVisible() {
 		finalView = m.popupView.RenderOver(finalView)
 	}
-
-	// Apply toaster overlay
 	finalView = m.toasterView.RenderOver(finalView)
 
 	v := tea.NewView(finalView)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+func (m Model) renderHelp(state ViewState) string {
+	th := m.Ctx.Theme
+	keyStyle := lipgloss.NewStyle().Foreground(th.SecondaryText).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(th.PrimaryText)
+
+	lines := []struct{ key, desc string }{
+		{"?", "this help"},
+		{"f", "toggle footer"},
+		{"s", "settings"},
+		{"q", "quit (from home)"},
+		{"ctrl+c", "force quit"},
+	}
+	if state == ViewStateProject {
+		lines = append(lines,
+			struct{ key, desc string }{"esc", "return to home"},
+			struct{ key, desc string }{"ctrl+r", "reload project"},
+		)
+	} else {
+		lines = append(lines,
+			struct{ key, desc string }{"n", "new project"},
+			struct{ key, desc string }{"tab", "switch panel"},
+			struct{ key, desc string }{"↑/↓", "navigate list"},
+			struct{ key, desc string }{"enter", "select / open"},
+		)
+	}
+
+	var sb strings.Builder
+	for _, l := range lines {
+		sb.WriteString(keyStyle.Render(padRight(l.key, 14)))
+		sb.WriteString(descStyle.Render(l.desc))
+		sb.WriteRune('\n')
+	}
+	return sb.String()
+}
+
+func padRight(s string, n int) string {
+	if len(s) >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-len(s))
 }

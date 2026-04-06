@@ -62,3 +62,8 @@ type ScopeFlagConfig struct {
 type ToolWrapper struct {
 	Tool ToolConfig `yaml:"tool"`
 }
+
+type DefaultTool struct {
+	RawYAML string `yaml:"-"`
+	Name    string `yaml:"-"`
+}

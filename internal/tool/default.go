@@ -5,16 +5,10 @@ import (
 	"path/filepath"
 )
 
-// WriteDefaultTools writes missing default tool files into toolsDir.
-// Each tool is stored in its own file named <toolname>.yaml.
-func WriteDefaultTools(toolsDir string) error {
-	subfinderPath := filepath.Join(toolsDir, "subfinder.yaml")
-	if _, err := os.Stat(subfinderPath); err == nil {
-		return nil
-	}
-
-	rawYAML := `---
-tool:
+var DefaultTools = []DefaultTool{
+	{
+		Name: "subfinder",
+		RawYAML: `tool:
   name: subfinder
   binary: subfinder
   description: Passive subdomain enumeration
@@ -29,8 +23,10 @@ tool:
       separator: "\n"
   output:
     type: stdout
-    format: line
-    fields: {}
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
   flags:
     - -silent
   user_flags: []
@@ -40,6 +36,91 @@ tool:
     default: 0
   consumes: domain
   produces: domain
-`
-	return os.WriteFile(subfinderPath, []byte(rawYAML), 0o644)
+`}, {
+		Name: "dnsx",
+		RawYAML: `tool:
+  name: dnsx-live
+  binary: dnsx
+  description: DNS resolution and live host filtering
+  version_cmd: dnsx -version
+  install: github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+    - -resp
+    - -no-color
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain
+
+---
+tool:
+  name: dnsx-resolve
+  binary: dnsx
+  description: DNS A record resolution for IP extraction
+  version_cmd: dnsx -version
+  install: github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - -silent
+    - -a
+    - -resp-only
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: ip
+`,
+	},
+}
+
+// WriteDefaultTools writes missing default tool files into toolsDir.
+// Each tool is stored in its own file named <toolname>.yaml.
+func WriteDefaultTools(toolsDir string) error {
+	for _, tool := range DefaultTools {
+		name := tool.Name
+		rawYAML := tool.RawYAML
+		toolPath := filepath.Join(toolsDir, name+".yaml")
+		if _, err := os.Stat(toolPath); err == nil {
+			continue
+		}
+		if err := os.WriteFile(toolPath, []byte(rawYAML), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

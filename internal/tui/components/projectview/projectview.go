@@ -4,6 +4,7 @@ package projectview
 import (
 	gocontext "context"
 	"fmt"
+	"image/color"
 	"io"
 	"log/slog"
 	"os"
@@ -138,11 +139,11 @@ func buildInputs(ctx *tuictx.ProgramContext) []textinput.Model {
 		t := textinput.New()
 
 		styles := textinput.DefaultDarkStyles()
-		styles.Focused.Prompt = lipgloss.NewStyle().Foreground(tuictx.LogoColor)
+		styles.Focused.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.WarningText)
 		styles.Focused.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
 		styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.SecondaryText)
 		styles.Blurred.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
-		styles.Cursor.Color = tuictx.LogoColor
+		styles.Cursor.Color = ctx.Theme.WarningText
 
 		t.SetStyles(styles)
 		t.Prompt = s.prompt
@@ -494,6 +495,11 @@ func runPipeline(
 		"available", len(reg.Available()),
 		"missing", len(reg.Missing()),
 	)
+
+	if err := engine.ValidatePipelineAgainstRegistry(pipeline, reg); err != nil {
+		log.Error("pipeline/registry mismatch", "pipeline", pipeline.Name, "err", err)
+		return fmt.Errorf("pipeline validation against registry: %w", err)
+	}
 
 	logsDir := projectDir + "/logs"
 	runner := tool.NewRunner(bus, logsDir)
@@ -889,8 +895,8 @@ func (m Model) renderNodes(w, h int) string {
 
 	var b strings.Builder
 	for _, n := range m.nodes {
-		icon, colorHex := nodeStatusIcon(n.Status)
-		iconStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+		icon, color := nodeStatusIcon(n.Status, m.ctx)
+		iconStyle := lipgloss.NewStyle().Foreground(color)
 		nameStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText)
 		dimStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText)
 
@@ -999,18 +1005,18 @@ func (m Model) renderStatus(w int) string {
 	return leftStyle.Render(left) + strings.Repeat(" ", gap) + right
 }
 
-// nodeStatusIcon returns the display icon and colour hex string for a node status.
-func nodeStatusIcon(s engine.NodeStatus) (icon, colorHex string) {
+// nodeStatusIcon returns the display icon and themed colour for a node status.
+func nodeStatusIcon(s engine.NodeStatus, ctx *tuictx.ProgramContext) (icon string, c color.Color) {
 	switch s {
 	case engine.NodeStatusActive:
-		return "▶", "#00F9FB"
+		return "▶", ctx.Theme.WarningText
 	case engine.NodeStatusCompleted:
-		return "✓", "#22C55E"
+		return "✓", ctx.Theme.SuccessText
 	case engine.NodeStatusError:
-		return "✗", "#EF4444"
+		return "✗", ctx.Theme.ErrorText
 	case engine.NodeStatusDraining:
-		return "~", "#F59E0B"
+		return "~", ctx.Theme.SecondaryText
 	default: // idle
-		return "○", "#6B7280"
+		return "○", ctx.Theme.FaintText
 	}
 }
