@@ -28,7 +28,7 @@ type NodeConfig struct {
 	ID        string        `yaml:"id" validate:"required"`
 	Name      string        `yaml:"name" validate:"required"`
 	Stage     int           `yaml:"stage" validate:"required"`
-	Tool      string        `yaml:"tool" validate:"required"`
+	Tool      string        `yaml:"tool" validate:"omitempty"`
 	Consumes  string        `yaml:"consumes" validate:"required"`
 	Produces  string        `yaml:"produces,omitempty"`
 	Batch     BatchConfig   `yaml:"batch"`
