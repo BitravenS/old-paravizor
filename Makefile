@@ -4,7 +4,7 @@ BINARY := paravizor
 CMD    := ./cmd/paravizor
 
 build:
-	go build -o $(BINARY) $(CMD)
+	go build -buildvcs=false -o $(BINARY) $(CMD)
 
 run: build
 	./$(BINARY)

@@ -2,7 +2,6 @@ package theme
 
 import (
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 )
 
 // LoadTheme creates a new Theme starting from DefaultTheme, and applies
@@ -14,7 +13,7 @@ func LoadTheme(cfg *ThemeConfig) *Theme {
 	}
 
 	// Helper to override AdaptiveColor if color string is provided
-	override := func(target *compat.AdaptiveColor, c Color) {
+	override := func(target *AdaptiveColor, c Color) {
 		if !c.IsZero() {
 			val := lipgloss.Color(string(c))
 			target.Light = val
@@ -50,62 +49,62 @@ func (c Color) IsZero() bool {
 // Light theme is based on Catpuccin Latte, dark theme is based on Catpuccin Mocha
 var DefaultTheme = &Theme{
 	// Subtext 0
-	PrimaryBorder: compat.AdaptiveColor{
+	PrimaryBorder: AdaptiveColor{
 		Light: lipgloss.Color("#6c6f85"),
 		Dark:  lipgloss.Color("#a6adc8"),
 	},
 	// Mauve
-	SecondaryBorder: compat.AdaptiveColor{
+	SecondaryBorder: AdaptiveColor{
 		Light: lipgloss.Color("#8839ef"),
 		Dark:  lipgloss.Color("#cba6f7"),
 	},
 	// Surface 1
-	SelectedBackground: compat.AdaptiveColor{
+	SelectedBackground: AdaptiveColor{
 		Light: lipgloss.Color("#bcc0cc"),
 		Dark:  lipgloss.Color("#45475a"),
 	},
 	//Surface 2
-	FaintBorder: compat.AdaptiveColor{
+	FaintBorder: AdaptiveColor{
 		Light: lipgloss.Color("#acb0be"),
 		Dark:  lipgloss.Color("#585b70"),
 	},
 	// Text
-	PrimaryText: compat.AdaptiveColor{
+	PrimaryText: AdaptiveColor{
 		Light: lipgloss.Color("#4c4f69"),
 		Dark:  lipgloss.Color("#cdd6f4"),
 	},
 	// Lavender
-	SecondaryText: compat.AdaptiveColor{
+	SecondaryText: AdaptiveColor{
 		Light: lipgloss.Color("#7287fd"),
 		Dark:  lipgloss.Color("#b4befe"),
 	},
 	// Teal
-	AccentText: compat.AdaptiveColor{
+	AccentText: AdaptiveColor{
 		Light: lipgloss.Color("#179299"),
 		Dark:  lipgloss.Color("#94e2d5"),
 	},
 	// overlay 1
-	FaintText: compat.AdaptiveColor{
+	FaintText: AdaptiveColor{
 		Light: lipgloss.Color("#8c8fa1"),
 		Dark:  lipgloss.Color("#7f849c"),
 	},
 	// Base
-	InvertedText: compat.AdaptiveColor{
+	InvertedText: AdaptiveColor{
 		Light: lipgloss.Color("#eff1f5"),
 		Dark:  lipgloss.Color("#1e1e2e"),
 	},
 	// Green
-	SuccessText: compat.AdaptiveColor{
+	SuccessText: AdaptiveColor{
 		Light: lipgloss.Color("#40a02b"),
 		Dark:  lipgloss.Color("#a6e3a1"),
 	},
 	// Yellow
-	WarningText: compat.AdaptiveColor{
+	WarningText: AdaptiveColor{
 		Light: lipgloss.Color("#df8e1d"),
 		Dark:  lipgloss.Color("#f9e2af"),
 	},
 	// Red
-	ErrorText: compat.AdaptiveColor{
+	ErrorText: AdaptiveColor{
 		Light: lipgloss.Color("#d20f39"),
 		Dark:  lipgloss.Color("#f38ba8"),
 	},

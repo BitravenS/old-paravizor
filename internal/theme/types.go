@@ -1,7 +1,7 @@
 package theme
 
 import (
-	"charm.land/lipgloss/v2/compat"
+	"image/color"
 )
 
 type Color string
@@ -37,17 +37,32 @@ type ThemeWrapper struct {
 	Theme ThemeConfig `yaml:"theme"`
 }
 
+type AdaptiveColor struct {
+	Light color.Color
+	Dark  color.Color
+}
+
+func (c AdaptiveColor) RGBA() (uint32, uint32, uint32, uint32) {
+	if c.Dark != nil {
+		return c.Dark.RGBA()
+	}
+	if c.Light != nil {
+		return c.Light.RGBA()
+	}
+	return 0, 0, 0, 0xffff
+}
+
 type Theme struct {
-	SelectedBackground compat.AdaptiveColor
-	PrimaryBorder      compat.AdaptiveColor
-	FaintBorder        compat.AdaptiveColor
-	SecondaryBorder    compat.AdaptiveColor
-	FaintText          compat.AdaptiveColor
-	PrimaryText        compat.AdaptiveColor
-	SecondaryText      compat.AdaptiveColor
-	AccentText         compat.AdaptiveColor
-	InvertedText       compat.AdaptiveColor
-	SuccessText        compat.AdaptiveColor
-	WarningText        compat.AdaptiveColor
-	ErrorText          compat.AdaptiveColor
+	SelectedBackground AdaptiveColor
+	PrimaryBorder      AdaptiveColor
+	FaintBorder        AdaptiveColor
+	SecondaryBorder    AdaptiveColor
+	FaintText          AdaptiveColor
+	PrimaryText        AdaptiveColor
+	SecondaryText      AdaptiveColor
+	AccentText         AdaptiveColor
+	InvertedText       AdaptiveColor
+	SuccessText        AdaptiveColor
+	WarningText        AdaptiveColor
+	ErrorText          AdaptiveColor
 }

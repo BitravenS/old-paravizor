@@ -25,28 +25,7 @@ var (
 
 	logo = lipgloss.NewStyle().Foreground(pctx.LogoColor).MarginBottom(1).SetString(constants.Logo)
 
-	rootCmd = &cobra.Command{
-		Use: "paravizor",
-		Long: lipgloss.JoinVertical(lipgloss.Left, logo.Render(),
-			"Automated bug bounty recon pipeline.",
-			"Give us a star on GitHub if you like the project! https://github.com/bitravens/paravizor"),
-		Short:   "Automated bug bounty recon pipeline.",
-		Version: "",
-		Example: `
-# Running without arguments will start the application TUI
-paravizor
-
-# Show help menu and available commands
-paravizor -h
-
-# Run with debug logging
-paravizor --debug
-
-# Print version
-paravizor -v
-	`,
-		Args: cobra.MaximumNArgs(1),
-	}
+	bootstrapInit = bootstrap.Init
 )
 
 func setDebugLogLevel() {
@@ -63,23 +42,35 @@ func setDebugLogLevel() {
 }
 
 func Execute() error {
-	if err := bootstrap.Init(); err != nil {
+	return ExecuteContext(context.Background(), os.Args[1:])
+}
+
+func ExecuteContext(ctx context.Context, args []string) error {
+	cobra.MousetrapHelpText = ""
+
+	cmd := newRootCmd()
+	cmd.SetArgs(args)
+
+	return fang.Execute(
+		ctx,
+		cmd,
+		fang.WithVersion(cmd.Version),
+		fang.WithoutCompletions(),
+		fang.WithoutManpage(),
+	)
+}
+
+func runBootstrap(cmd *cobra.Command) error {
+	if err := bootstrapInit(); err != nil {
 		if issues, ok := bootstrap.NonFatalIssues(err); ok {
 			for _, issue := range issues {
-				_, _ = fmt.Fprintf(os.Stderr, "Warning: %s\n", issue)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", issue)
 			}
 		} else {
 			return err
 		}
 	}
-
-	return fang.Execute(
-		context.Background(),
-		rootCmd,
-		fang.WithVersion(rootCmd.Version),
-		fang.WithoutCompletions(),
-		fang.WithoutManpage(),
-	)
+	return nil
 }
 
 func createModel(location string, debug bool) (tui.Model, *os.File) {
@@ -117,44 +108,63 @@ func createModel(location string, debug bool) (tui.Model, *os.File) {
 	return tui.NewModel(location, version, nil), loggerFile
 }
 
-func init() {
-	rootCmd.Version = version
-	rootCmd.SetVersionTemplate(`paravizor {{printf "version %s\n" .Version}}`)
+func newRootCmd() *cobra.Command {
+	cobra.MousetrapHelpText = ""
 
-	rootCmd.Flags().Bool(
+	cmd := &cobra.Command{
+		Use: "paravizor",
+		Long: lipgloss.JoinVertical(lipgloss.Left, logo.Render(),
+			"Automated bug bounty recon pipeline.",
+			"Give us a star on GitHub if you like the project! https://github.com/bitravens/paravizor"),
+		Short:   "Automated bug bounty recon pipeline.",
+		Version: version,
+		Example: `
+# Running without arguments will start the application TUI
+paravizor
+
+# Show help menu and available commands
+paravizor -h
+
+# Run with debug logging
+paravizor --debug
+
+# Print version
+paravizor -v
+	`,
+		Args: cobra.NoArgs,
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			return runBootstrap(cmd)
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			debug, err := cmd.Flags().GetBool("debug")
+			if err != nil {
+				return fmt.Errorf("parse debug flag: %w", err)
+			}
+
+			model, logger := createModel("", debug)
+			if logger != nil {
+				defer logger.Close()
+			}
+
+			p := tea.NewProgram(model)
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("start TUI: %w", err)
+			}
+			return nil
+		},
+	}
+	cmd.SetVersionTemplate(`paravizor {{printf "version %s\n" .Version}}`)
+
+	cmd.Flags().Bool(
 		"debug",
 		false,
 		"Debug output to ~/.config/paravizor/logs",
 	)
 
-	rootCmd.Flags().BoolP(
-		"help",
-		"h",
-		false,
-		"help for paravizor",
-	)
-	rootCmd.AddCommand()
-
-	rootCmd.Run = func(_ *cobra.Command, args []string) {
-		debug, err := rootCmd.Flags().GetBool("debug")
-		if err != nil {
-			log.Fatal("Cannot parse debug flag", err)
-		}
-
-		model, logger := createModel("", debug)
-		if logger != nil {
-			defer logger.Close()
-		}
-
-		p := tea.NewProgram(model)
-		if _, err := p.Run(); err != nil {
-			log.Fatal("Failed starting the TUI", err)
-		}
-	}
-
-	rootCmd.AddCommand(newInitCmd())
-	rootCmd.AddCommand(newRunCmd())
-	rootCmd.AddCommand(newExportCmd())
-	rootCmd.AddCommand(newQueryCmd())
-	rootCmd.AddCommand(newToolsCmd())
+	cmd.AddCommand(newInitCmd())
+	cmd.AddCommand(newRunCmd())
+	cmd.AddCommand(newExportCmd())
+	cmd.AddCommand(newQueryCmd())
+	cmd.AddCommand(newToolsCmd())
+	return cmd
 }
