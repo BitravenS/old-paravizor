@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 )
 
 // DAG represents the pipeline as a directed acyclic graph.
@@ -75,6 +76,7 @@ func (d *DAG) topologicalSort() ([]string, error) {
 			queue = append(queue, id)
 		}
 	}
+	sort.Strings(queue)
 
 	var order []string
 	for len(queue) > 0 {
@@ -86,6 +88,7 @@ func (d *DAG) topologicalSort() ([]string, error) {
 			inDegree[target]--
 			if inDegree[target] == 0 {
 				queue = append(queue, target)
+				sort.Strings(queue)
 			}
 		}
 	}
@@ -123,6 +126,7 @@ func (d *DAG) RootNodes() []string {
 			roots = append(roots, id)
 		}
 	}
+	sort.Strings(roots)
 	return roots
 }
 
@@ -134,6 +138,7 @@ func (d *DAG) TerminalNodes() []string {
 			terminals = append(terminals, id)
 		}
 	}
+	sort.Strings(terminals)
 	return terminals
 }
 

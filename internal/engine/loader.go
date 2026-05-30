@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -34,9 +35,9 @@ func LoadExternalPipeline(name string) (*PipelineConfig, error) {
 			defaultPath := filepath.Join(prvzrDir, "pipelines", "default.yaml")
 			defCfg, defErr := ParsePipelineConfig(defaultPath)
 			if defErr != nil {
-				return nil, err // Return original error if fallback also fails
+				return nil, fmt.Errorf("load pipeline %q: %w; fallback default pipeline %q also failed: %v", name, err, defaultPath, defErr)
 			}
-			return &defCfg, err // Return fallback cfg, but still return error so caller knows
+			return &defCfg, fmt.Errorf("load pipeline %q: %w; using default pipeline", name, err)
 		}
 		return nil, err
 	}

@@ -31,17 +31,30 @@ var validItemTypes = map[string]bool{
 //
 // Returns a joined non-nil error if any check fails, nil otherwise.
 func ValidatePipeline(cfg *PipelineConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("pipeline config is nil")
+	}
+
 	var errs []error
+	graphReady := true
 
 	// Build lookup sets.
 	stageIDs := make(map[int]bool, len(cfg.Stages))
 	for _, s := range cfg.Stages {
+		if stageIDs[s.ID] {
+			errs = append(errs, fmt.Errorf("stage %d is defined more than once", s.ID))
+		}
 		stageIDs[s.ID] = true
 	}
 
 	nodeByID := make(map[string]*NodeConfig, len(cfg.Nodes))
 	for i := range cfg.Nodes {
 		n := &cfg.Nodes[i]
+		if _, exists := nodeByID[n.ID]; exists {
+			errs = append(errs, fmt.Errorf("node %q is defined more than once", n.ID))
+			graphReady = false
+			continue
+		}
 		nodeByID[n.ID] = n
 	}
 
@@ -69,6 +82,7 @@ func ValidatePipeline(cfg *PipelineConfig) error {
 				downstream, ok := nodeByID[route.To]
 				if !ok {
 					errs = append(errs, fmt.Errorf("node %q: route target %q does not exist", node.ID, route.To))
+					graphReady = false
 					continue
 				}
 				// Produces must match downstream's consumes.
@@ -85,11 +99,18 @@ func ValidatePipeline(cfg *PipelineConfig) error {
 		n, ok := nodeByID[init.Node]
 		if !ok {
 			errs = append(errs, fmt.Errorf("init[%d]: node %q does not exist in the pipeline", i, init.Node))
+			graphReady = false
 			continue
 		}
 		if n.Consumes != init.ItemType {
 			errs = append(errs, fmt.Errorf("init[%d]: scope %q sends item_type %q to node %q which consumes %q",
 				i, init.Scope, init.ItemType, init.Node, n.Consumes))
+		}
+	}
+
+	if graphReady {
+		if _, err := BuildDAG(cfg); err != nil {
+			errs = append(errs, fmt.Errorf("pipeline graph is invalid: %w", err))
 		}
 	}
 
