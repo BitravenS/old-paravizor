@@ -1,17 +1,18 @@
 package project
 
 import (
-	"path/filepath"
-
+	"fmt"
 	"github.com/bitravens/paravizor/v1/internal/utils"
+	"path/filepath"
 )
 
 // LoadProjectConfig reads and validates project.yaml from the given project directory.
 // The file must have a top-level "project:" key (ProjectWrapper format).
 func LoadProjectConfig(projectDir string) (ProjectConfig, error) {
-	wrapper, err := utils.ParseYAML[ProjectWrapper](filepath.Join(projectDir, ProjectConfigFile))
+	path := filepath.Join(projectDir, ProjectConfigFile)
+	wrapper, err := utils.ParseYAML[ProjectWrapper](path)
 	if err != nil {
-		return ProjectConfig{}, err
+		return ProjectConfig{}, fmt.Errorf("load project config %q: %w", path, err)
 	}
 	return wrapper.Project, nil
 }

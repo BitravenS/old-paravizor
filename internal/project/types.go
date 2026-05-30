@@ -1,7 +1,7 @@
 package project
 
 type ProjectConfig struct {
-	Name          string            `yaml:"name"`
+	Name          string            `yaml:"name" validate:"required"`
 	Description   string            `yaml:"description,omitempty"`
 	Scope         ScopeConfig       `yaml:"scope,omitempty"`
 	RateLimitMode string            `yaml:"rate_limit_mode,omitempty" validate:"oneof=normal overdrive"`

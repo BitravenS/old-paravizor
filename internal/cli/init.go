@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-
-	"charm.land/log/v2"
 	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/spf13/cobra"
 )
@@ -15,13 +13,10 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init <name>",
 		Short: "Initialize a new Paravizor project",
-		Args:  cobra.MaximumNArgs(3),
-		Run: func(_ *cobra.Command, args []string) {
-			if len(args) == 0 {
-				cliInitProject()
-				return
-			}
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			projectName := args[0]
+
 			base := dir
 			if base == "" {
 				base = "."
@@ -38,22 +33,20 @@ func newInitCmd() *cobra.Command {
 				scopeConfig,
 			)
 			if err != nil {
-				log.Fatal("Failed to create project config", "err", err)
+				return fmt.Errorf("create project config: %w", err)
 			}
 
 			projectPath, err := project.InitProject(base, *cfg)
 			if err != nil {
-				log.Fatal("Failed to initialize project", "err", err)
+				return fmt.Errorf("initialize project: %w", err)
 			}
 
-			fmt.Printf("Initialized new Paravizor project at %s\n", projectPath)
-		}}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Initialized new Paravizor project at %s\n", projectPath)
+			return err
+		},
+	}
 	cmd.Flags().StringVarP(&dir, "dir", "d", "", "Base directory to create the project in (default: current directory)")
 	cmd.Flags().StringSliceVarP(&scopeConfig.Include, "include", "i", []string{}, "Domains (comma-separated regex) to include in scope")
 	cmd.Flags().StringSliceVarP(&scopeConfig.Exclude, "exclude", "e", []string{}, "Domains (comma-separated regex) to exclude from scope")
 	return cmd
-}
-
-func cliInitProject() {
-
 }
