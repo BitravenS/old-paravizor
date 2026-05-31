@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
 	"github.com/bitravens/paravizor/v1/internal/cli"
 )
 

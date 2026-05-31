@@ -76,6 +76,10 @@ type Model struct {
 	height int
 }
 
+func (m Model) Focused() bool {
+	return m.state == stateCreate
+}
+
 // ProjectDir returns the active project directory for this view.
 func (m Model) ProjectDir() string {
 	return m.projectDir

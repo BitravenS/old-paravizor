@@ -104,21 +104,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "q":
+			if m.isInputFocused() {
+				break
+			}
 			if m.state == ViewStateHome {
 				return m, tea.Quit
 			}
 
 		case "f":
+			if m.isInputFocused() {
+				break
+			}
 			m.showFooter = !m.showFooter
 			m.recalculateLayout()
 			return m, nil
 
 		case "?":
+			if m.isInputFocused() {
+				break
+			}
 			helpText := m.renderHelp(m.state)
 			m.popupView.Show("Help", helpText, "esc  close")
 			return m, nil
 
 		case "s":
+			if m.isInputFocused() {
+				break
+			}
 			// Settings popup — fresh model each time so fields reflect current config.
 			sm := settings.NewModel(m.Ctx)
 			m.popupView.Show("Settings", sm.View(), "ctrl+s save  esc cancel")
@@ -126,6 +138,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+r":
 			if m.state == ViewStateProject {
+				if m.isInputFocused() {
+					break
+				}
 				if dir := m.projectView.ProjectDir(); dir != "" {
 					m.Ctx.ProjectDir = dir
 					if p, err := project.LoadProject(dir); err == nil {
@@ -215,6 +230,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.recalculateLayout()
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) isInputFocused() bool {
+	switch m.state {
+	case ViewStateHome:
+		return m.homeView.Focused()
+	case ViewStateProject:
+		return m.projectView.Focused()
+	}
+	return false
 }
 
 func (m *Model) recalculateLayout() {

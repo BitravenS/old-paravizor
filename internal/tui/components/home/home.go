@@ -214,6 +214,10 @@ func yamlFiles(dir string) []string {
 	return out
 }
 
+func (m Model) Focused() bool {
+	return m.leftState == panelCreate
+}
+
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
