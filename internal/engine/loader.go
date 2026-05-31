@@ -1,10 +1,10 @@
 package engine
 
 import (
+	"log/slog"
 	"path/filepath"
 	"strings"
 
-	"charm.land/log/v2"
 	"github.com/bitravens/paravizor/v1/internal/utils"
 )
 
@@ -30,7 +30,7 @@ func LoadExternalPipeline(name string) (*PipelineConfig, error) {
 	cfg, err := ParsePipelineConfig(pipelinePath)
 	if err != nil {
 		if name != "default.yaml" {
-			log.Warn("Failed to load pipeline, falling back to default", "pipeline", name, "err", err)
+			slog.Warn("Failed to load pipeline, falling back to default", "pipeline", name, "err", err)
 			defaultPath := filepath.Join(prvzrDir, "pipelines", "default.yaml")
 			defCfg, defErr := ParsePipelineConfig(defaultPath)
 			if defErr != nil {

@@ -1,0 +1,160 @@
+tool:
+  name: grep-interesting-params
+  binary: grep
+  description: "Triage: interesting query parameter names (id, user, file, path, url, redirect, next, src, token, key, api_key, session)"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "(id|user|file|path|url|redirect|next|src|token|key|api_key|session)="
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: grep-interesting-endpoints
+  binary: grep
+  description: "Triage: interesting endpoint path segments (config, assets)"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "/(config|assets)"
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: grep-api-endpoints
+  binary: grep
+  description: "Triage: API endpoint path segments (api, v1-v9, graphql, rest, gql)"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "/(api|v[0-9]+|graphql|rest|gql)([/?#]|$)"
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: grep-file-upload
+  binary: grep
+  description: "Triage: file upload endpoint path segments"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "/(upload|file|attachment|document|image|avatar|photo|media)([/?#]|$)"
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: grep-admin-paths
+  binary: grep
+  description: "Triage: admin and internal path segments"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "/(admin|internal|debug|test|staging|dev|management|console)([/?#]|$)"
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: grep-auth-endpoints
+  binary: grep
+  description: "Triage: authentication and SSO endpoint path segments"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-iE"
+    - "/(oauth|login|auth|sso|oidc|saml|callback|token)([/?#]|$)"
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url

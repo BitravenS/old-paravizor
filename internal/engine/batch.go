@@ -48,9 +48,22 @@ func (b *BatchAccumulator) ShouldProcess(
 		return false
 	}
 
-	// wait_for_peers: only process when all upstream peers are done
-	if b.cfg.WaitForPeers && !upstreamAllCompleted {
-		return false
+	// If wait_for_peers is set, hold until upstream is completely done
+	if b.cfg.WaitForPeers {
+		if !upstreamAllCompleted {
+			return false
+		}
+		return true // upstream done, we can process what we have
+	}
+
+	// Always process remaining items if upstream is completed
+	if upstreamAllCompleted {
+		return true
+	}
+
+	// If neither size nor timeout configured, process immediately
+	if b.cfg.Size == 0 && b.parseBatchTimeout() == 0 {
+		return true
 	}
 
 	// size threshold
@@ -81,6 +94,10 @@ func (b *BatchAccumulator) WaitAndCollect(
 	maxItems int,
 	upstreamDone func() bool,
 ) ([]db.PipelineState, error) {
+	if b.cfg.Size > 0 && maxItems > b.cfg.Size {
+		maxItems = b.cfg.Size
+	}
+
 	timeout := b.parseBatchTimeout()
 	if timeout == 0 {
 		timeout = 60 * time.Second // default max wait
@@ -99,8 +116,15 @@ func (b *BatchAccumulator) WaitAndCollect(
 			return nil, err
 		}
 
+		upDone := upstreamDone()
+
+		// If upstream is done and there are no more items, return immediately
+		if len(states) == 0 && upDone {
+			return states, nil
+		}
+
 		elapsed := time.Since(deadline.Add(-timeout))
-		if b.ShouldProcess(states, upstreamDone(), elapsed) {
+		if b.ShouldProcess(states, upDone, elapsed) {
 			return states, nil
 		}
 
@@ -112,8 +136,15 @@ func (b *BatchAccumulator) WaitAndCollect(
 		}
 
 		// Hard deadline
-		if time.Now().After(deadline) {
-			return states, nil
+		if time.Now().After(deadline) && !b.cfg.WaitForPeers {
+			minSize := b.cfg.MinSize
+			if minSize <= 0 {
+				minSize = 1
+			}
+			if len(states) >= minSize {
+				return states, nil
+			}
+			deadline = time.Now().Add(timeout)
 		}
 	}
 }

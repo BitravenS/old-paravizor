@@ -137,9 +137,9 @@ func (s *Store) WriteTx(ctx context.Context, fn func(q *db.Queries) error) error
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
+	defer tx.Rollback()
 
 	if err := fn(s.wq.WithTx(tx)); err != nil {
-		tx.Rollback()
 		return err
 	}
 

@@ -69,7 +69,7 @@ type PortItem struct {
 	ID         int64
 	Host       string
 	Port       int
-	Protocol   string // "tcp" or "udp"
+	Protocol   string
 	SourceName string
 }
 
@@ -78,7 +78,10 @@ func (p PortItem) ItemID() int64            { return p.ID }
 func (p PortItem) Source() string           { return p.SourceName }
 func (p PortItem) ScopeTarget() ScopeTarget { return ScopeTarget(p.Host) }
 func (p PortItem) Value() string {
-	return fmt.Sprintf("%s:%d/%s", p.Host, p.Port, p.Protocol)
+	if p.Protocol != "" {
+		return fmt.Sprintf("%s:%d/%s", p.Host, p.Port, p.Protocol)
+	}
+	return fmt.Sprintf("%s:%d", p.Host, p.Port)
 }
 
 type DNSRecordItem struct {

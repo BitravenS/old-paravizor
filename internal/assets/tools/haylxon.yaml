@@ -1,0 +1,24 @@
+tool:
+  name: haylxon
+  binary: hlx
+  description: Web screenshot capture tool (Rust-based Eyewitness alternative)
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: directory
+    format: line
+    flag: -out
+    path: screenshots
+  flags: []
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: file

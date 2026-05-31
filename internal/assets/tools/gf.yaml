@@ -1,0 +1,180 @@
+tool:
+  name: gf-xss
+  binary: gf
+  description: "GF pattern scan: Cross-Site Scripting (XSS) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - xss
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-ssrf
+  binary: gf
+  description: "GF pattern scan: Server-Side Request Forgery (SSRF) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - ssrf
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-rce
+  binary: gf
+  description: "GF pattern scan: Remote Code Execution (RCE) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - rce
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-idor
+  binary: gf
+  description: "GF pattern scan: Insecure Direct Object Reference (IDOR) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - idor
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-redirect
+  binary: gf
+  description: "GF pattern scan: Open Redirect indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - redirect
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-lfi
+  binary: gf
+  description: "GF pattern scan: Local File Inclusion (LFI) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - lfi
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url
+
+---
+tool:
+  name: gf-sqli
+  binary: gf
+  description: "GF pattern scan: SQL Injection (SQLi) indicators"
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - sqli
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url

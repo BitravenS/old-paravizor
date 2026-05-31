@@ -18,13 +18,26 @@ func itemAttrs(item items.Item) map[string]string {
 	case *items.DomainItem:
 		attrs["name"] = v.Name
 		attrs["source"] = v.SourceName
+	case items.DomainItem:
+		attrs["name"] = v.Name
+		attrs["source"] = v.SourceName
 	case *items.URLItem:
+		attrs["full_url"] = v.FullURL
+		attrs["source"] = v.SourceName
+	case items.URLItem:
 		attrs["full_url"] = v.FullURL
 		attrs["source"] = v.SourceName
 	case *items.IPItem:
 		attrs["address"] = v.Address
 		attrs["source"] = v.SourceName
+	case items.IPItem:
+		attrs["address"] = v.Address
+		attrs["source"] = v.SourceName
 	case *items.PortItem:
+		attrs["port"] = strconv.Itoa(v.Port)
+		attrs["protocol"] = v.Protocol
+		attrs["source"] = v.SourceName
+	case items.PortItem:
 		attrs["port"] = strconv.Itoa(v.Port)
 		attrs["protocol"] = v.Protocol
 		attrs["source"] = v.SourceName
@@ -32,8 +45,23 @@ func itemAttrs(item items.Item) map[string]string {
 		attrs["severity"] = v.Severity
 		attrs["title"] = v.Title
 		attrs["source"] = v.SourceName
+	case items.FindingItem:
+		attrs["severity"] = v.Severity
+		attrs["title"] = v.Title
+		attrs["source"] = v.SourceName
 	case *items.FileItem:
 		attrs["file_path"] = v.Path
+		attrs["source"] = v.SourceName
+	case items.FileItem:
+		attrs["file_path"] = v.Path
+		attrs["source"] = v.SourceName
+	case *items.DNSRecordItem:
+		attrs["record_type"] = v.RecordType
+		attrs["value"] = v.RecordValue
+		attrs["source"] = v.SourceName
+	case items.DNSRecordItem:
+		attrs["record_type"] = v.RecordType
+		attrs["value"] = v.RecordValue
 		attrs["source"] = v.SourceName
 	}
 	return attrs
@@ -114,11 +142,16 @@ func evalPredicate(expr string, attrs map[string]string, item items.Item) bool {
 
 	// is_wildcard == true / false (special semantic)
 	if strings.HasPrefix(expr, "is_wildcard") {
-		v, ok := item.(*items.DomainItem)
-		if !ok {
+		var name string
+		switch v := item.(type) {
+		case *items.DomainItem:
+			name = v.Name
+		case items.DomainItem:
+			name = v.Name
+		default:
 			return false
 		}
-		isWildcard := strings.HasPrefix(v.Name, "*.")
+		isWildcard := strings.HasPrefix(name, "*.")
 		rhs := strings.TrimSpace(strings.TrimPrefix(expr, "is_wildcard"))
 		rhs = strings.TrimSpace(strings.TrimPrefix(rhs, "=="))
 		rhs = strings.Trim(rhs, " '\"")

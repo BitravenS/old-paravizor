@@ -46,19 +46,26 @@ func (b *Bus) Publish(event Event) {
 	b.seq.Add(1)
 
 	b.mu.RLock()
-	defer b.mu.RUnlock()
-
 	eventType := reflect.TypeOf(event)
 
-	// Type-specific handlers
+	// Copy handlers to avoid calling them while holding the lock
+	var specificHandlers []HandlerFunc
 	if handlers, ok := b.handlers[eventType]; ok {
-		for _, h := range handlers {
-			h(event)
-		}
+		specificHandlers = make([]HandlerFunc, len(handlers))
+		copy(specificHandlers, handlers)
+	}
+
+	allHandlers := make([]HandlerFunc, len(b.allHandlers))
+	copy(allHandlers, b.allHandlers)
+	b.mu.RUnlock()
+
+	// Type-specific handlers
+	for _, h := range specificHandlers {
+		h(event)
 	}
 
 	// Catch-all handlers
-	for _, h := range b.allHandlers {
+	for _, h := range allHandlers {
 		h(event)
 	}
 }

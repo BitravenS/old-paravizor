@@ -1,0 +1,25 @@
+tool:
+  name: kanha
+  binary: kanha
+  description: Subdomain takeover checker written in Rust
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '(?P<title>VULNERABLE[^\n]+)'
+    fields:
+      title: title
+  flags: []
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: finding

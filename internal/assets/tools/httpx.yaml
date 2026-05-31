@@ -1,0 +1,69 @@
+tool:
+  name: httpx-tech
+  binary: httpx
+  description: HTTP tech-stack fingerprinting
+  version_cmd: httpx -version
+  install: github.com/projectdiscovery/httpx/cmd/httpx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+    - -tech-detect
+    - -no-color
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: -timeout
+    default: 10
+  consumes: domain
+  produces: domain
+
+---
+tool:
+  name: httpx-probe
+  binary: httpx
+  description: HTTP URL liveliness probing
+  version_cmd: httpx -version
+  install: github.com/projectdiscovery/httpx/cmd/httpx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+)'
+    fields:
+      full_url: full_url
+  flags:
+    - -silent
+    - -no-color
+    - -mc
+    - 200,201,204,206,301,302,401,403
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: -timeout
+    default: 10
+  consumes: url
+  produces: url

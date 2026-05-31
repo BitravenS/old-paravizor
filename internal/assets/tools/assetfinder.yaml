@@ -1,0 +1,22 @@
+tool:
+  name: assetfinder
+  binary: assetfinder
+  description: Asset and endpoint discovery within JavaScript files
+  input:
+    type: arg
+    flag: ""
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+)'
+    fields:
+      full_url: full_url
+  flags:
+    - --subs-only
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: file
+  produces: url

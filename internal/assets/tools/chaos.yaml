@@ -1,0 +1,28 @@
+tool:
+  name: chaos
+  binary: chaos
+  description: Passive subdomain enumeration via ProjectDiscovery Chaos API
+  version_cmd: chaos -version
+  install: github.com/projectdiscovery/chaos-client/cmd/chaos@latest
+  input:
+    type: arg
+    flag: -d
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain

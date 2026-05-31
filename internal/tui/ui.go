@@ -211,9 +211,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.footerView, cmd = m.footerView.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// Always recalculate after every update so sizing stays consistent.
-	m.recalculateLayout()
-
 	return m, tea.Batch(cmds...)
 }
 

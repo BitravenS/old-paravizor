@@ -1,0 +1,21 @@
+tool:
+  name: themedetect
+  binary: themedetect
+  description: WordPress theme and plugin detection
+  input:
+    type: arg
+    flag: ""
+  output:
+    type: stdout
+    format: regex
+    pattern: '(?P<title>Theme:\s+\S+|Plugin:\s+\S+)'
+    fields:
+      title: title
+  flags: []
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: finding

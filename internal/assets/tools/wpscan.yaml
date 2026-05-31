@@ -1,0 +1,25 @@
+tool:
+  name: wpscan
+  binary: wpscan
+  description: WordPress vulnerability scanner
+  input:
+    type: arg
+    flag: --url
+  output:
+    type: stdout
+    format: regex
+    pattern: '\[!\]\s+(?P<title>[^\n]+)'
+    fields:
+      title: title
+  flags:
+    - --no-update
+    - --disable-tls-checks
+    - --format
+    - cli-no-color
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: finding

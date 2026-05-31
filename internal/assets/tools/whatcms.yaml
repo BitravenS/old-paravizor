@@ -1,0 +1,21 @@
+tool:
+  name: whatcms
+  binary: whatcms
+  description: CMS detection using WhatCMS API
+  input:
+    type: arg
+    flag: ""
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags: []
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain

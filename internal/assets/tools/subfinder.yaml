@@ -1,0 +1,28 @@
+tool:
+  name: subfinder
+  binary: subfinder
+  description: Passive subdomain enumeration
+  version_cmd: subfinder -version
+  install: github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+  input:
+    type: arg
+    flag: -d
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+  user_flags: []
+  env: {}
+  timeout:
+    flag: -timeout
+    default: 0
+  consumes: domain
+  produces: domain

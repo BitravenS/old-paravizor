@@ -1,0 +1,547 @@
+pipeline:
+    name: default
+    description: Default Paravizor bug-bounty recon pipeline
+    init:
+        - scope: wildcard
+          node: subdomain-passive-subfinder
+          item_type: domain
+        - scope: wildcard
+          node: subdomain-passive-chaos
+          item_type: domain
+        - scope: wildcard
+          node: subdomain-passive-amass
+          item_type: domain
+        - scope: exact
+          node: dnsx-live
+          item_type: domain
+        - scope: path
+          node: url-dedup
+          item_type: url
+    stages:
+        - id: 1
+          name: Subdomain Enumeration
+        - id: 2
+          name: Fingerprinting
+        - id: 3
+          name: URL Extraction
+        - id: 4
+          name: Attack Surface Triage
+        - id: 5
+          name: Static File Extraction
+        - id: 6
+          name: Vulnerability Scanning
+    nodes:
+        - id: subdomain-passive-subfinder
+          name: Passive Subdomain Enum (subfinder)
+          stage: 1
+          tool: subfinder
+          consumes: domain
+          produces: domain
+          batch:
+            size: 1
+            timeout: 10s
+          routes:
+            - to: subdomain-bruteforce
+            - to: dnsx-live
+            - to: vuln-takeover
+        - id: subdomain-passive-chaos
+          name: Passive Subdomain Enum (Chaos API)
+          stage: 1
+          tool: chaos
+          consumes: domain
+          produces: domain
+          batch:
+            size: 1
+            timeout: 10s
+          routes:
+            - to: subdomain-bruteforce
+            - to: dnsx-live
+            - to: vuln-takeover
+        - id: subdomain-passive-amass
+          name: Passive Subdomain Enum (Amass)
+          stage: 1
+          tool: amass-passive
+          consumes: domain
+          produces: domain
+          batch:
+            size: 1
+            timeout: 10s
+          routes:
+            - to: subdomain-bruteforce
+            - to: dnsx-live
+            - to: vuln-takeover
+        - id: subdomain-bruteforce
+          name: Active DNS Bruteforce (puredns)
+          stage: 1
+          tool: puredns-bruteforce
+          consumes: domain
+          produces: domain
+          batch:
+            size: 1
+            timeout: 30m
+          routes:
+            - to: subdomain-permutation-expand
+            - to: dnsx-live
+            - to: vuln-takeover
+        - id: subdomain-permutation-expand
+          name: Subdomain Permutation Expand (alterx)
+          stage: 1
+          tool: alterx
+          consumes: domain
+          produces: domain
+          batch:
+            size: 50
+            timeout: 5m
+            wait_for_peers: true
+          routes:
+            - to: subdomain-permutation-resolve
+        - id: subdomain-permutation-resolve
+          name: Permutation DNS Resolve (puredns)
+          stage: 1
+          tool: puredns-resolve
+          consumes: domain
+          produces: domain
+          batch:
+            size: 100
+            timeout: 10m
+            wait_for_peers: true
+          routes:
+            - to: dnsx-live
+            - to: vuln-takeover
+        - id: dnsx-live
+          name: Live Host Filter (dnsx)
+          stage: 1
+          tool: dnsx-live
+          consumes: domain
+          produces: domain
+          batch:
+            size: 500
+            timeout: 5m
+            wait_for_peers: true
+          routes:
+            - to: screenshot
+            - to: port-scan-resolve
+            - to: tech-httpx
+            - to: tech-nuclei
+            - to: tech-whatcms
+            - to: vuln-nuclei-host
+            - to: url-crawl-katana
+            - to: url-crawl-gau
+            - to: url-crawl-wayback
+        - id: screenshot
+          name: Web Screenshot Capture (haylxon)
+          stage: 2
+          tool: haylxon
+          consumes: domain
+          produces: file
+          batch:
+            size: 50
+            timeout: 5m
+          routes: []
+        - id: port-scan-resolve
+          name: DNS A Record Resolution (dnsx)
+          stage: 2
+          tool: dnsx-resolve
+          consumes: domain
+          produces: ip
+          batch:
+            size: 100
+            timeout: 5m
+          routes:
+            - to: port-scan-rustscan
+        - id: port-scan-rustscan
+          name: Fast Port Scan (rustscan)
+          stage: 2
+          tool: rustscan
+          consumes: ip
+          produces: port
+          batch:
+            size: 50
+            timeout: 10m
+          routes:
+            - to: port-scan-nmap
+        - id: port-scan-nmap
+          name: Service Version Scan (nmap)
+          stage: 2
+          tool: nmap
+          consumes: port
+          produces: finding
+          batch:
+            size: 20
+            timeout: 20m
+          routes: []
+        - id: tech-httpx
+          name: HTTP Tech Fingerprint (httpx)
+          stage: 2
+          tool: httpx-tech
+          consumes: domain
+          produces: domain
+          batch:
+            size: 100
+            timeout: 10m
+          routes:
+            - to: wordpress-theme-detect
+              condition: '''wordpress'' in source'
+            - to: vuln-wpscan
+              condition: '''wordpress'' in source'
+        - id: tech-nuclei
+          name: Tech Fingerprint via Nuclei
+          stage: 2
+          tool: nuclei-tech
+          consumes: domain
+          produces: domain
+          batch:
+            size: 100
+            timeout: 10m
+          routes:
+            - to: wordpress-theme-detect
+              condition: '''wordpress'' in source'
+            - to: vuln-wpscan
+              condition: '''wordpress'' in source'
+        - id: tech-whatcms
+          name: CMS Detection (whatcms)
+          stage: 2
+          tool: whatcms
+          consumes: domain
+          produces: domain
+          batch:
+            size: 50
+            timeout: 10m
+          routes:
+            - to: wordpress-theme-detect
+              condition: '''wordpress'' in source'
+            - to: vuln-wpscan
+              condition: '''wordpress'' in source'
+        - id: wordpress-theme-detect
+          name: WordPress Theme Detection (themedetect)
+          stage: 2
+          tool: themedetect
+          consumes: domain
+          produces: finding
+          batch:
+            size: 20
+            timeout: 5m
+          routes: []
+        - id: url-crawl-katana
+          name: Active Web Crawl (katana)
+          stage: 3
+          tool: katana
+          consumes: domain
+          produces: url
+          batch:
+            size: 20
+            timeout: 10m
+          routes:
+            - to: url-dedup
+        - id: url-crawl-gau
+          name: Passive URL Enum (gau)
+          stage: 3
+          tool: gau
+          consumes: domain
+          produces: url
+          batch:
+            size: 20
+            timeout: 5m
+          routes:
+            - to: url-dedup
+        - id: url-crawl-wayback
+          name: Wayback Machine URLs (waybackurls)
+          stage: 3
+          tool: waybackurls
+          consumes: domain
+          produces: url
+          batch:
+            size: 20
+            timeout: 5m
+          routes:
+            - to: url-dedup
+        - id: url-dedup
+          name: URL Deduplication (uro)
+          stage: 3
+          tool: uro
+          consumes: url
+          produces: url
+          batch:
+            size: 1000
+            timeout: 2m
+            wait_for_peers: true
+          routes:
+            - to: url-liveliness
+            - to: vuln-nuclei-dast
+              condition: '''='' in full_url'
+            - to: attack-surface-params
+            - to: attack-surface-endpoints
+            - to: attack-surface-api
+            - to: attack-surface-upload
+            - to: attack-surface-admin
+            - to: attack-surface-auth
+            - to: attack-surface-gf-xss
+            - to: attack-surface-gf-ssrf
+            - to: attack-surface-gf-rce
+            - to: attack-surface-gf-idor
+            - to: attack-surface-gf-redirect
+            - to: attack-surface-gf-lfi
+            - to: attack-surface-gf-sqli
+        - id: url-liveliness
+          name: URL Liveliness Check (httpx)
+          stage: 3
+          tool: httpx-probe
+          consumes: url
+          produces: url
+          batch:
+            size: 500
+            timeout: 10m
+          routes:
+            - to: static-file-js
+              condition: full_url matches '\.js([?#]|$)'
+            - to: static-file-docs
+              condition: full_url matches '\.(pdf|doc|docx|xls|xlsx)([?#]|$)'
+            - to: static-file-text
+              condition: full_url matches '\.(txt|csv|xml|conf|cnf|reg|inf|rdp|cfg|ora|ini|log|json)([?#]|$)'
+            - to: static-file-backup
+              condition: full_url matches '\.(bak|backup|bkp|old|bkf)([?#]|$)'
+        - id: attack-surface-params
+          name: Interesting Parameters Triage
+          stage: 4
+          tool: grep-interesting-params
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-endpoints
+          name: Interesting Endpoints Triage
+          stage: 4
+          tool: grep-interesting-endpoints
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-api
+          name: API Endpoint Triage
+          stage: 4
+          tool: grep-api-endpoints
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-upload
+          name: File Upload Endpoint Triage
+          stage: 4
+          tool: grep-file-upload
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-admin
+          name: Admin and Internal Path Triage
+          stage: 4
+          tool: grep-admin-paths
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-auth
+          name: Auth Endpoint Triage
+          stage: 4
+          tool: grep-auth-endpoints
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-xss
+          name: GF XSS Pattern Scan
+          stage: 4
+          tool: gf-xss
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-ssrf
+          name: GF SSRF Pattern Scan
+          stage: 4
+          tool: gf-ssrf
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-rce
+          name: GF RCE Pattern Scan
+          stage: 4
+          tool: gf-rce
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-idor
+          name: GF IDOR Pattern Scan
+          stage: 4
+          tool: gf-idor
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-redirect
+          name: GF Open Redirect Pattern Scan
+          stage: 4
+          tool: gf-redirect
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-lfi
+          name: GF LFI Pattern Scan
+          stage: 4
+          tool: gf-lfi
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: attack-surface-gf-sqli
+          name: GF SQLi Pattern Scan
+          stage: 4
+          tool: gf-sqli
+          consumes: url
+          produces: url
+          batch:
+            size: 5000
+            timeout: 5m
+            wait_for_peers: true
+          routes: []
+        - id: static-file-js
+          name: JavaScript File Download
+          stage: 5
+          tool: wget-download
+          consumes: url
+          produces: file
+          batch:
+            size: 100
+            timeout: 10m
+          routes:
+            - to: vuln-js-linkfinder
+            - to: vuln-js-assetfinder
+        - id: static-file-docs
+          name: Document File Download
+          stage: 5
+          tool: wget-download
+          consumes: url
+          produces: file
+          batch:
+            size: 50
+            timeout: 10m
+          routes: []
+        - id: static-file-text
+          name: Text and Config File Download
+          stage: 5
+          tool: wget-download
+          consumes: url
+          produces: file
+          batch:
+            size: 50
+            timeout: 10m
+          routes: []
+        - id: static-file-backup
+          name: Backup File Download
+          stage: 5
+          tool: wget-download
+          consumes: url
+          produces: file
+          batch:
+            size: 50
+            timeout: 10m
+          routes: []
+        - id: vuln-takeover
+          name: Subdomain Takeover Check (kanha)
+          stage: 6
+          tool: kanha
+          consumes: domain
+          produces: finding
+          batch:
+            size: 100
+            timeout: 10m
+          routes: []
+        - id: vuln-nuclei-host
+          name: Nuclei Host Scan
+          stage: 6
+          tool: nuclei-host
+          consumes: domain
+          produces: finding
+          batch:
+            size: 50
+            timeout: 30m
+          routes: []
+        - id: vuln-wpscan
+          name: WordPress Vulnerability Scan (wpscan)
+          stage: 6
+          tool: wpscan
+          consumes: domain
+          produces: finding
+          batch:
+            size: 10
+            timeout: 10m
+          routes: []
+        - id: vuln-nuclei-dast
+          name: Nuclei DAST and Fuzzing
+          stage: 6
+          tool: nuclei-dast
+          consumes: url
+          produces: finding
+          batch:
+            size: 200
+            timeout: 60m
+          routes: []
+        - id: vuln-js-linkfinder
+          name: JS Link Extraction (linkfinder)
+          stage: 6
+          tool: linkfinder
+          consumes: file
+          produces: url
+          batch:
+            size: 20
+            timeout: 5m
+          routes: []
+        - id: vuln-js-assetfinder
+          name: JS Asset Discovery (assetfinder)
+          stage: 6
+          tool: assetfinder
+          consumes: file
+          produces: url
+          batch:
+            size: 20
+            timeout: 5m
+          routes: []

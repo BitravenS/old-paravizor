@@ -1,0 +1,31 @@
+tool:
+  name: amass-passive
+  binary: amass
+  description: Passive subdomain enumeration using OWASP Amass
+  version_cmd: amass -version
+  install: github.com/owasp-amass/amass/v4/cmd/amass@master
+  input:
+    type: arg
+    flag: -d
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})\s*$'
+    fields:
+      name: name
+  flags:
+    - enum
+    - -passive
+    - -norecursive
+    - -silent
+  user_flags: []
+  env: {}
+  timeout:
+    flag: -timeout
+    default: 0
+  consumes: domain
+  produces: domain

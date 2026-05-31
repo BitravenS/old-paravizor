@@ -1,0 +1,27 @@
+tool:
+  name: wget-download
+  binary: wget
+  description: Download static files from URLs to the project downloads directory
+  input:
+    type: arg
+    flag: ""
+    bulk:
+      type: file
+      flag: -i
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - "-q"
+    - "--no-check-certificate"
+    - "-P"
+    - downloads
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: file

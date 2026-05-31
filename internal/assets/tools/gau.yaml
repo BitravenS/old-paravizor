@@ -1,0 +1,27 @@
+tool:
+  name: gau
+  binary: gau
+  description: Passive URL enumeration from multiple sources
+  install: github.com/lc/gau/v2/cmd/gau@latest
+  input:
+    type: arg
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+)'
+    fields:
+      full_url: full_url
+  flags:
+    - --subs
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: url

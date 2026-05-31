@@ -1,0 +1,28 @@
+tool:
+  name: alterx
+  binary: alterx
+  description: Subdomain permutation and wordlist generation
+  version_cmd: alterx -version
+  install: github.com/projectdiscovery/alterx/cmd/alterx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain

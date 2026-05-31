@@ -1,0 +1,66 @@
+tool:
+  name: dnsx-live
+  binary: dnsx
+  description: DNS resolution and live host filtering
+  version_cmd: dnsx -version
+  install: github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+    - -resp
+    - -no-color
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain
+
+---
+tool:
+  name: dnsx-resolve
+  binary: dnsx
+  description: DNS A record resolution for IP extraction
+  version_cmd: dnsx -version
+  install: github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: line
+    fields: {}
+  flags:
+    - -silent
+    - -a
+    - -resp-only
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: ip

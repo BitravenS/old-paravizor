@@ -1,0 +1,53 @@
+tool:
+  name: puredns-bruteforce
+  binary: puredns
+  description: Active DNS bruteforce subdomain enumeration using puredns
+  install: github.com/d3mondev/puredns/v2@latest
+  input:
+    type: arg
+    flag: -d
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - bruteforce
+    - /usr/share/seclists/Discovery/DNS/dns-Jhaddix.txt
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain
+
+---
+tool:
+  name: puredns-resolve
+  binary: puredns
+  description: DNS resolution and validation using puredns
+  install: github.com/d3mondev/puredns/v2@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: file
+      flag: -l
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - resolve
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain

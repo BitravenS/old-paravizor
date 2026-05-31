@@ -162,7 +162,8 @@ func (p *CreditPool) rebalanceLocked() {
 		for id, b := range p.activeNodes {
 			alloc[id] = b.Rate()
 		}
-		p.onRebalance(alloc)
+		cb := p.onRebalance
+		go cb(alloc)
 	}
 }
 

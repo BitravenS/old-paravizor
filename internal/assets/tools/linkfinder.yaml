@@ -1,0 +1,24 @@
+tool:
+  name: linkfinder
+  binary: python3
+  description: JavaScript endpoint and URL extractor (LinkFinder)
+  input:
+    type: arg
+    flag: -i
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+|/[^\s"'']+)'
+    fields:
+      full_url: full_url
+  flags:
+    - /usr/local/bin/linkfinder.py
+    - -o
+    - cli
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: file
+  produces: url

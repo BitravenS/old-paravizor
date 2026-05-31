@@ -1,0 +1,31 @@
+tool:
+  name: rustscan
+  binary: rustscan
+  description: Fast multi-threaded port scanner
+  input:
+    type: arg
+    flag: -a
+    bulk:
+      type: file
+      flag: --addresses
+      separator: ","
+  output:
+    type: stdout
+    format: regex
+    pattern: 'Open (?P<address>[^:]+):(?P<port>\d+)'
+    fields:
+      address: address
+      port: port
+  flags:
+    - --ulimit
+    - "5000"
+    - --
+    - -sV
+    - --open
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: ip
+  produces: port

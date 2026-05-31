@@ -2,22 +2,20 @@ package home
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitravens/paravizor/v1/internal/engine"
+	"github.com/bitravens/paravizor/v1/internal/theme"
 	"github.com/bitravens/paravizor/v1/internal/tool"
-	"github.com/bitravens/paravizor/v1/internal/tui/context"
+	tuictx "github.com/bitravens/paravizor/v1/internal/tui/context"
 	"github.com/bitravens/paravizor/v1/internal/utils"
 )
-
-// ── Public messages ───────────────────────────────────────────────────────────
 
 type ActionType int
 
@@ -27,141 +25,251 @@ const (
 )
 
 type Item struct {
-	Title       string
-	Description string
 	Type        ActionType
 	ProjectPath string
 }
 
 type ActionMsg struct{ Action Item }
-
-// CatalogSelectMsg is sent when the user presses enter on a pipeline or tool.
 type CatalogSelectMsg struct{ Entry CatalogEntry }
-
-// ── Internal messages ─────────────────────────────────────────────────────────
-
-type animTickMsg struct{}
 type catalogLoadedMsg struct {
 	pipelines []CatalogEntry
 	tools     []CatalogEntry
 }
 
-// ── Catalog entry ─────────────────────────────────────────────────────────────
-
 type EntryStatus int
 
 const (
-	StatusOK    EntryStatus = iota
-	StatusWarn  EntryStatus = iota
-	StatusError EntryStatus = iota
+	StatusOK EntryStatus = iota
+	StatusWarn
+	StatusError
 )
 
 type CatalogEntry struct {
-	Kind       string
-	Name       string
-	Path       string
-	RawYAML    string
-	Status     EntryStatus
-	StatusMsg  string
-	NotInstall bool
+	Kind, Name, Path, RawYAML string
+	Status                    EntryStatus
+	StatusMsg                 string
+	NotInstall                bool
 }
-
-// ── Left-panel state ──────────────────────────────────────────────────────────
-
-type leftPanel int
-
-const (
-	panelActions leftPanel = iota
-	panelCreate
-)
-
-// ── Model ─────────────────────────────────────────────────────────────────────
-
-type focusArea int
-
-const (
-	focusLeft  focusArea = iota
-	focusRight focusArea = iota
-)
 
 type Model struct {
-	ctx  *context.ProgramContext
-	w, h int
-
-	// Left panel
-	leftState    leftPanel
-	actionCursor int
-	createInput  textinput.Model // project path input for inline create
-
-	// Right panel catalog
-	focus          focusArea
-	pipelines      []CatalogEntry
-	tools          []CatalogEntry
-	catalogTab     int // 0 = Pipelines, 1 = Tools
-	pipelineCursor int
-	pipelineScroll int
-	toolCursor     int
-	toolScroll     int
-
-	// Animation
-	cat CatAnimation
+	ctx       *tuictx.ProgramContext
+	w, h      int
+	pipelines []CatalogEntry
+	tools     []CatalogEntry
+	tab       int
+	cursor    int
+	scroll    int
 }
 
-func NewModel(ctx *context.ProgramContext) Model {
-	inp := textinput.New()
-	st := textinput.DefaultDarkStyles()
-	st.Focused.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.WarningText)
-	st.Focused.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
-	st.Blurred.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.SecondaryText)
-	st.Blurred.Text = lipgloss.NewStyle().Foreground(ctx.Theme.FaintText)
-	st.Cursor.Color = ctx.Theme.WarningText
-	inp.SetStyles(st)
-	inp.Prompt = "Path: "
-	inp.Placeholder = "/path/to/project"
+func NewModel(ctx *tuictx.ProgramContext) Model {
+	return Model{ctx: ctx, w: ctx.Window.Width, h: ctx.Window.Height}
+}
 
-	return Model{
-		ctx:         ctx,
-		w:           ctx.Window.Width,
-		h:           ctx.Window.Height,
-		createInput: inp,
+func (m Model) Init() tea.Cmd { return loadCatalog() }
+
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.w, m.h = msg.Width, msg.Height
+	case catalogLoadedMsg:
+		m.pipelines, m.tools = msg.pipelines, msg.tools
+	case tea.KeyMsg:
+		return m.updateBrowse(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateBrowse(msg tea.KeyMsg) (Model, tea.Cmd) {
+	entries := m.currentEntries()
+	switch msg.String() {
+	case "t":
+		m.tab, m.cursor, m.scroll = 1-m.tab, 0, 0
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+			m.clampScroll()
+		}
+	case "down", "j":
+		if m.cursor < len(entries)-1 {
+			m.cursor++
+			m.clampScroll()
+		}
+	case "enter":
+		if m.cursor < len(entries) {
+			e := entries[m.cursor]
+			return m, func() tea.Msg { return CatalogSelectMsg{Entry: e} }
+		}
+	case "n":
+		return m, func() tea.Msg { return ActionMsg{Action: Item{Type: ActionCreateProject}} }
+	}
+	return m, nil
+}
+
+func (m Model) currentEntries() []CatalogEntry {
+	if m.tab == 0 {
+		return m.pipelines
+	}
+	return m.tools
+}
+
+func (m *Model) clampScroll() {
+	vis := m.h - 4
+	if vis < 1 {
+		vis = 1
+	}
+	if m.cursor < m.scroll {
+		m.scroll = m.cursor
+	} else if m.cursor >= m.scroll+vis {
+		m.scroll = m.cursor - vis + 1
 	}
 }
 
-func (m Model) Init() tea.Cmd {
-	return tea.Batch(animTick(), loadCatalog())
+func (m Model) View() string {
+	if m.w <= 0 || m.h <= 0 {
+		return ""
+	}
+	th := m.ctx.Theme
+	faint := lipgloss.NewStyle().Foreground(th.FaintText)
+	hi := lipgloss.NewStyle().Foreground(th.WarningText).Bold(true)
+
+	var b strings.Builder
+	b.WriteString(hi.Render("Paravizor") + "  " + faint.Render(m.ctx.Version) + "\n")
+	b.WriteString(faint.Render("n:new  s:settings  ?:help  f:footer  q:quit") + "\n\n")
+
+	for i, t := range []string{"Pipelines", "Tools"} {
+		if i == m.tab {
+			b.WriteString(hi.Render("[" + t + "]"))
+		} else {
+			b.WriteString(faint.Render(" " + t + " "))
+		}
+		b.WriteString("  ")
+	}
+	b.WriteString(faint.Render("t:switch") + "\n\n")
+
+	entries := m.currentEntries()
+	if len(entries) == 0 {
+		b.WriteString(faint.Render("  Loading…"))
+	} else {
+		vis := m.h - 8
+		if vis < 1 {
+			vis = 1
+		}
+		end := m.scroll + vis
+		if end > len(entries) {
+			end = len(entries)
+		}
+		for i := m.scroll; i < end; i++ {
+			e := entries[i]
+			icon, iconColor := entryIcon(e.Status, th)
+			sel := i == m.cursor
+			prefix := "  "
+			if sel {
+				prefix = "▶ "
+			}
+			nameSt := lipgloss.NewStyle().Foreground(th.PrimaryText)
+			if sel {
+				nameSt = hi
+			}
+			line := lipgloss.NewStyle().Foreground(iconColor).Render(icon) + " " + nameSt.Render(prefix+e.Name)
+			if i == m.scroll && m.scroll > 0 {
+				line += faint.Render(" ↑")
+			} else if i == end-1 && end < len(entries) {
+				line += faint.Render(" ↓")
+			}
+			b.WriteString(line + "\n")
+		}
+	}
+	return b.String()
 }
 
-func animTick() tea.Cmd {
-	return tea.Tick(AnimInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+func entryIcon(s EntryStatus, th *theme.Theme) (string, color.Color) {
+	switch s {
+	case StatusOK:
+		return "✓", th.SuccessText
+	case StatusWarn:
+		return "⚠", th.WarningText
+	case StatusError:
+		return "✗", th.ErrorText
+	}
+	return "·", th.FaintText
+}
+
+// RenderYAMLPopupContent builds popup body for a catalog entry.
+func RenderYAMLPopupContent(entry CatalogEntry, ctx *tuictx.ProgramContext) string {
+	th := ctx.Theme
+	icon, iconColor := entryIcon(entry.Status, th)
+	badge := lipgloss.NewStyle().Foreground(iconColor).Bold(true)
+	var statusLine string
+	if entry.NotInstall {
+		statusLine = lipgloss.NewStyle().Foreground(th.WarningText).Render("⚠ Binary not installed")
+	} else if entry.StatusMsg != "" {
+		statusLine = badge.Render(icon + " " + entry.StatusMsg)
+	} else {
+		statusLine = badge.Render(icon + " Valid")
+	}
+	kindLabel := lipgloss.NewStyle().Foreground(th.FaintText).Render(entry.Kind + " · " + entry.Name)
+	return lipgloss.JoinVertical(lipgloss.Left, kindLabel, statusLine, "", renderYAML(entry.RawYAML, ctx))
+}
+
+func renderYAML(raw string, ctx *tuictx.ProgramContext) string {
+	th := ctx.Theme
+	key := lipgloss.NewStyle().Foreground(th.WarningText)
+	val := lipgloss.NewStyle().Foreground(th.PrimaryText)
+	cmt := lipgloss.NewStyle().Foreground(th.FaintText).Italic(true)
+	sep := lipgloss.NewStyle().Foreground(th.SecondaryText)
+	var out []string
+	for _, line := range strings.Split(raw, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "#") {
+			out = append(out, cmt.Render(line))
+		} else if t == "---" {
+			out = append(out, sep.Render(line))
+		} else if idx := strings.Index(line, ": "); idx >= 0 {
+			out = append(out, key.Render(line[:idx+1])+val.Render(line[idx+1:]))
+		} else if strings.HasSuffix(t, ":") {
+			out = append(out, key.Render(line))
+		} else {
+			out = append(out, val.Render(line))
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func findToolYAML(toolsDir, name string) []byte {
+	raw, _ := os.ReadFile(filepath.Join(toolsDir, name+".yaml"))
+	if len(raw) > 0 {
+		return raw
+	}
+	if files, err := os.ReadDir(toolsDir); err == nil {
+		for _, f := range files {
+			if data, _ := os.ReadFile(filepath.Join(toolsDir, f.Name())); strings.Contains(string(data), "name: "+name) {
+				return data
+			}
+		}
+	}
+	return nil
 }
 
 func loadCatalog() tea.Cmd {
 	return func() tea.Msg {
-		var pipelines, tools []CatalogEntry
 		prvzrDir, err := utils.PrvzrConfigDir()
 		if err != nil {
 			return catalogLoadedMsg{}
 		}
+		var pipelines, tools []CatalogEntry
 
 		pipelinesDir := filepath.Join(prvzrDir, "pipelines")
 		if files, err := os.ReadDir(pipelinesDir); err == nil {
 			for _, f := range files {
-				if f.IsDir() {
-					continue
-				}
 				ext := filepath.Ext(f.Name())
-				if ext != ".yaml" && ext != ".yml" {
+				if f.IsDir() || (ext != ".yaml" && ext != ".yml") {
 					continue
 				}
 				path := filepath.Join(pipelinesDir, f.Name())
 				raw, _ := os.ReadFile(path)
-				e := CatalogEntry{
-					Kind: "pipeline", Name: strings.TrimSuffix(f.Name(), ext),
-					Path: path, RawYAML: string(raw), Status: StatusOK,
-				}
+				e := CatalogEntry{Kind: "pipeline", Name: strings.TrimSuffix(f.Name(), ext), Path: path, RawYAML: string(raw)}
 				if _, err := engine.ParsePipelineConfig(path); err != nil {
-					e.Status = StatusError
-					e.StatusMsg = err.Error()
+					e.Status, e.StatusMsg = StatusError, err.Error()
 				}
 				pipelines = append(pipelines, e)
 			}
@@ -172,172 +280,16 @@ func loadCatalog() tea.Cmd {
 		_ = reg.LoadDir(toolsDir)
 		reg.CheckAvailability(nil)
 		for _, def := range reg.All() {
-			raw, _ := os.ReadFile(filepath.Join(toolsDir, def.Name+".yaml"))
-			if len(raw) == 0 {
-				for _, f := range yamlFiles(toolsDir) {
-					data, _ := os.ReadFile(f)
-					if strings.Contains(string(data), "name: "+def.Name) {
-						raw = data
-						break
-					}
-				}
-			}
-			e := CatalogEntry{
-				Kind: "tool", Name: def.Name,
-				Path:    filepath.Join(toolsDir, def.Name+".yaml"),
-				RawYAML: string(raw), Status: StatusOK,
-			}
+			raw := findToolYAML(toolsDir, def.Name)
+			e := CatalogEntry{Kind: "tool", Name: def.Name, Path: filepath.Join(toolsDir, def.Name+".yaml"), RawYAML: string(raw)}
 			if !def.Available {
-				e.Status = StatusWarn
-				e.StatusMsg = fmt.Sprintf("binary %q not found", def.Binary)
-				e.NotInstall = true
+				e.Status, e.StatusMsg, e.NotInstall = StatusWarn, fmt.Sprintf("binary %q not found", def.Binary), true
 			}
 			if verr := tool.ValidateTool(def); verr != nil {
-				e.Status = StatusError
-				e.StatusMsg = verr.Error()
+				e.Status, e.StatusMsg = StatusError, verr.Error()
 			}
 			tools = append(tools, e)
 		}
 		return catalogLoadedMsg{pipelines: pipelines, tools: tools}
-	}
-}
-
-func yamlFiles(dir string) []string {
-	var out []string
-	if files, err := os.ReadDir(dir); err == nil {
-		for _, f := range files {
-			if ext := filepath.Ext(f.Name()); ext == ".yaml" || ext == ".yml" {
-				out = append(out, filepath.Join(dir, f.Name()))
-			}
-		}
-	}
-	return out
-}
-
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	var cmd tea.Cmd
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.w, m.h = msg.Width, msg.Height
-		m.adjustScroll()
-
-	case animTickMsg:
-		m.cat.Tick()
-		return m, animTick()
-
-	case catalogLoadedMsg:
-		m.pipelines = msg.pipelines
-		m.tools = msg.tools
-		m.adjustScroll()
-
-	case tea.KeyMsg:
-		// Inline create form active
-		if m.leftState == panelCreate {
-			switch msg.String() {
-			case "esc":
-				m.leftState = panelActions
-				m.createInput.Blur()
-			case "enter":
-				path := strings.TrimSpace(m.createInput.Value())
-				if path != "" {
-					m.createInput.Blur()
-					return m, func() tea.Msg {
-						return ActionMsg{Action: Item{Type: ActionCreateProject, ProjectPath: path}}
-					}
-				}
-			default:
-				m.createInput, cmd = m.createInput.Update(msg)
-				return m, cmd
-			}
-			return m, nil
-		}
-
-		switch msg.String() {
-		case "t":
-			m.catalogTab = 1 - m.catalogTab
-			m.adjustScroll()
-		case "tab":
-			if m.focus == focusLeft {
-				m.focus = focusRight
-			} else {
-				m.focus = focusLeft
-			}
-		case "up", "k":
-			if m.focus == focusLeft && m.actionCursor > 0 {
-				m.actionCursor--
-			} else if m.focus == focusRight {
-				if m.catalogTab == 0 && m.pipelineCursor > 0 {
-					m.pipelineCursor--
-				} else if m.catalogTab == 1 && m.toolCursor > 0 {
-					m.toolCursor--
-				}
-				m.adjustScroll()
-			}
-		case "down", "j":
-			actions := 1 // "New Project"
-			if m.focus == focusLeft && m.actionCursor < actions-1 {
-				m.actionCursor++
-			} else if m.focus == focusRight {
-				if m.catalogTab == 0 && m.pipelineCursor < len(m.pipelines)-1 {
-					m.pipelineCursor++
-				} else if m.catalogTab == 1 && m.toolCursor < len(m.tools)-1 {
-					m.toolCursor++
-				}
-				m.adjustScroll()
-			}
-		case "enter":
-			if m.focus == focusLeft {
-				// Show inline create form
-				m.leftState = panelCreate
-				m.createInput.SetValue("")
-				m.createInput.Focus()
-			} else if m.focus == focusRight {
-				if m.catalogTab == 0 && m.pipelineCursor < len(m.pipelines) {
-					entry := m.pipelines[m.pipelineCursor]
-					return m, func() tea.Msg { return CatalogSelectMsg{Entry: entry} }
-				} else if m.catalogTab == 1 && m.toolCursor < len(m.tools) {
-					entry := m.tools[m.toolCursor]
-					return m, func() tea.Msg { return CatalogSelectMsg{Entry: entry} }
-				}
-			}
-		case "n":
-			if m.leftState != panelCreate {
-				m.leftState = panelCreate
-				m.createInput.SetValue("")
-				m.createInput.Focus()
-			}
-		}
-	}
-	return m, nil
-}
-
-func (m *Model) adjustScroll() {
-	minBottomH := 8
-	topH := AnimHeight + 4
-	if m.h-topH < minBottomH {
-		topH = m.h - minBottomH
-	}
-	if topH < 6 {
-		topH = 6
-	}
-	bottomH := m.h - topH
-
-	visibleItems := bottomH - 6 // border(2) + padding(2) + title(1) + divider(1)
-	if visibleItems < 1 {
-		visibleItems = 1
-	}
-
-	if m.catalogTab == 0 {
-		if m.pipelineCursor < m.pipelineScroll {
-			m.pipelineScroll = m.pipelineCursor
-		} else if m.pipelineCursor >= m.pipelineScroll+visibleItems {
-			m.pipelineScroll = m.pipelineCursor - visibleItems + 1
-		}
-	} else {
-		if m.toolCursor < m.toolScroll {
-			m.toolScroll = m.toolCursor
-		} else if m.toolCursor >= m.toolScroll+visibleItems {
-			m.toolScroll = m.toolCursor - visibleItems + 1
-		}
 	}
 }

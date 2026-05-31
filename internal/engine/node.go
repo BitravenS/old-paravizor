@@ -16,6 +16,7 @@ const (
 	NodeStatusDraining  NodeStatus = "draining"
 	NodeStatusCompleted NodeStatus = "completed"
 	NodeStatusError     NodeStatus = "error"
+	NodeStatusSkipped   NodeStatus = "skipped"
 )
 
 // NodeStats tracks processing statistics for a node.

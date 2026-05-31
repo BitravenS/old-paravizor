@@ -1,0 +1,28 @@
+tool:
+  name: nmap
+  binary: nmap
+  description: Network port and service version scanner
+  input:
+    type: arg
+    flag: ""
+  output:
+    type: stdout
+    format: regex
+    pattern: '(?P<port>\d+)/(?P<protocol>\w+)\s+open\s+(?P<title>\S+)'
+    fields:
+      port: port
+      protocol: protocol
+      title: title
+  flags:
+    - -sV
+    - -open
+    - --max-retries
+    - "2"
+    - -T4
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: port
+  produces: finding

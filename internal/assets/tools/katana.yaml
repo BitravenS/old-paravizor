@@ -1,0 +1,37 @@
+tool:
+  name: katana
+  binary: katana
+  description: Active web crawler for URL discovery
+  version_cmd: katana -version
+  install: github.com/projectdiscovery/katana/cmd/katana@latest
+  input:
+    type: arg
+    flag: -u
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+)'
+    fields:
+      full_url: full_url
+  flags:
+    - -silent
+    - -no-color
+    - -d
+    - "3"
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: -timeout
+    default: 0
+  scope_flags:
+    include: -fs
+    exclude: -frs
+  consumes: domain
+  produces: url

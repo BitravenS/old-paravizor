@@ -1,0 +1,26 @@
+tool:
+  name: uro
+  binary: uro
+  description: URL deduplication and normalization
+  install: pip3 install uro
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<full_url>https?://\S+)'
+    fields:
+      full_url: full_url
+  flags: []
+  user_flags: []
+  env: {}
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: url

@@ -1,0 +1,114 @@
+tool:
+  name: nuclei-tech
+  binary: nuclei
+  description: Tech-stack fingerprinting via Nuclei technology templates
+  version_cmd: nuclei -version
+  install: github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^\[(?P<name>[^\]]+)\]'
+    fields:
+      name: name
+  flags:
+    - -silent
+    - -no-color
+    - -t
+    - http/technologies/
+    - -tags
+    - tech
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: domain
+
+---
+tool:
+  name: nuclei-host
+  binary: nuclei
+  description: Host-level vulnerability scanning via Nuclei
+  version_cmd: nuclei -version
+  install: github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^\[(?P<title>[^\]]+)\]\s+\[(?P<severity>\w+)\]'
+    fields:
+      title: title
+      severity: severity
+  flags:
+    - -silent
+    - -no-color
+    - -tags
+    - cve,exposure,panel,misconfig,tech
+    - -severity
+    - critical,high,medium
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: domain
+  produces: finding
+
+---
+tool:
+  name: nuclei-dast
+  binary: nuclei
+  description: DAST and fuzzing via Nuclei on parameterised URLs
+  version_cmd: nuclei -version
+  install: github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+  input:
+    type: stdin
+    flag: ""
+    bulk:
+      type: stdin
+      flag: ""
+      separator: "\n"
+  output:
+    type: stdout
+    format: regex
+    pattern: '^\[(?P<title>[^\]]+)\]\s+\[(?P<severity>\w+)\]'
+    fields:
+      title: title
+      severity: severity
+  flags:
+    - -silent
+    - -no-color
+    - -tags
+    - dast,fuzzing
+    - -rl
+    - "50"
+  user_flags: []
+  env: {}
+  rate_limit:
+    flag: -rl
+    unit: second
+  timeout:
+    flag: ""
+    default: 0
+  consumes: url
+  produces: finding

@@ -15,86 +15,25 @@ import (
 type MsgSaveConfig struct{}
 type MsgCancel struct{}
 
-// ── Inline dropdown ───────────────────────────────────────────────────────────
-
-type dropdown struct {
-	label   string
-	options []string
-	idx     int
-	focused bool
-}
-
-func newDropdown(label string, options []string, current string) dropdown {
-	d := dropdown{label: label, options: options}
-	for i, o := range options {
-		if o == current {
-			d.idx = i
-			break
-		}
-	}
-	return d
-}
-
-func (d *dropdown) next() {
-	d.idx = (d.idx + 1) % len(d.options)
-}
-func (d *dropdown) prev() {
-	d.idx--
-	if d.idx < 0 {
-		d.idx = len(d.options) - 1
-	}
-}
-func (d dropdown) value() string {
-	if len(d.options) == 0 {
-		return ""
-	}
-	return d.options[d.idx]
-}
-
-func (d dropdown) render(ctx *context.ProgramContext) string {
-	th := ctx.Theme
-	var labelStyle, valStyle, arrowStyle, dimStyle lipgloss.Style
-	if d.focused {
-		labelStyle = lipgloss.NewStyle().Foreground(th.WarningText)
-		valStyle = lipgloss.NewStyle().Foreground(th.PrimaryText).Bold(true)
-		arrowStyle = lipgloss.NewStyle().Foreground(th.WarningText)
-	} else {
-		labelStyle = lipgloss.NewStyle().Foreground(th.PrimaryText)
-		valStyle = lipgloss.NewStyle().Foreground(th.SecondaryText)
-		arrowStyle = lipgloss.NewStyle().Foreground(th.FaintText)
-	}
-	dimStyle = lipgloss.NewStyle().Foreground(th.FaintText)
-
-	var opts []string
-	for i, o := range d.options {
-		if i == d.idx {
-			opts = append(opts, valStyle.Render(o))
-		} else {
-			opts = append(opts, dimStyle.Render(o))
-		}
-	}
-	bar := arrowStyle.Render("◀ ") + strings.Join(opts, dimStyle.Render(" / ")) + arrowStyle.Render(" ▶")
-	return labelStyle.Render(d.label) + bar
-}
-
-// ── Model ─────────────────────────────────────────────────────────────────────
-
-// totalFields = 4 text inputs + 1 dropdown
-const totalFields = 5
+const totalFields = 5 // 4 text inputs + 1 dropdown
 
 type Model struct {
-	ctx      *context.ProgramContext
-	inputs   []textinput.Model
-	logLevel dropdown
-	focus    int // 0..3 = text inputs, 4 = dropdown
-	err      error
+	ctx     *context.ProgramContext
+	inputs  []textinput.Model
+	logOpts []string // dropdown options
+	logIdx  int      // current log level index
+	focus   int
+	err     error
 }
 
 func NewModel(ctx *context.ProgramContext) Model {
-	m := Model{
-		ctx:      ctx,
-		inputs:   make([]textinput.Model, 4),
-		logLevel: newDropdown("Log Level: ", []string{"debug", "info", "warn", "error"}, ctx.Config.LogLevel),
+	logOpts := []string{"debug", "info", "warn", "error"}
+	logIdx := 0
+	for i, o := range logOpts {
+		if o == ctx.Config.LogLevel {
+			logIdx = i
+			break
+		}
 	}
 
 	prompts := []struct{ label, placeholder, value string }{
@@ -104,76 +43,76 @@ func NewModel(ctx *context.ProgramContext) Model {
 		{"Healthcheck Interval (s): ", "10", fmt.Sprintf("%d", ctx.Config.HealthCheckInterval)},
 	}
 
-	for i := range m.inputs {
-		t := textinput.New()
-		st := textinput.DefaultDarkStyles()
-		st.Focused.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.WarningText)
-		st.Focused.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
-		st.Blurred.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
-		st.Blurred.Text = lipgloss.NewStyle().Foreground(ctx.Theme.SecondaryText)
-		st.Cursor.Color = ctx.Theme.WarningText
-		t.SetStyles(st)
-		t.Prompt = prompts[i].label
-		t.Placeholder = prompts[i].placeholder
-		t.SetValue(prompts[i].value)
+	inputs := make([]textinput.Model, len(prompts))
+	for i, p := range prompts {
+		t := ctx.StyledInput()
+		t.Prompt = p.label
+		t.Placeholder = p.placeholder
+		t.SetValue(p.value)
 		if i == 0 {
 			t.Focus()
 		}
-		m.inputs[i] = t
+		inputs[i] = t
 	}
-	return m
+
+	return Model{ctx: ctx, inputs: inputs, logOpts: logOpts, logIdx: logIdx}
 }
 
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
-
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
+	if key, ok := msg.(tea.KeyMsg); ok {
+		switch key.String() {
 		case "ctrl+s":
 			return m.save()
-
 		case "enter":
 			if m.focus < totalFields-1 {
-				m.nextField()
+				m.setFocus((m.focus + 1) % totalFields)
 				return m, nil
 			}
 			return m.save()
-
 		case "esc":
 			return m, func() tea.Msg { return MsgCancel{} }
-
 		case "up", "shift+tab":
-			m.prevField()
+			f := m.focus - 1
+			if f < 0 {
+				f = totalFields - 1
+			}
+			m.setFocus(f)
 			return m, nil
-
 		case "down", "tab":
-			m.nextField()
+			m.setFocus((m.focus + 1) % totalFields)
 			return m, nil
-
 		case "left":
 			if m.focus == totalFields-1 {
-				m.logLevel.prev()
+				m.logIdx = (m.logIdx - 1 + len(m.logOpts)) % len(m.logOpts)
 				return m, nil
 			}
 		case "right":
 			if m.focus == totalFields-1 {
-				m.logLevel.next()
+				m.logIdx = (m.logIdx + 1) % len(m.logOpts)
 				return m, nil
 			}
 		}
 	}
-
-	// Propagate to focused text input
 	if m.focus < len(m.inputs) {
 		t, cmd := m.inputs[m.focus].Update(msg)
 		m.inputs[m.focus] = t
 		cmds = append(cmds, cmd)
 	}
-
 	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) setFocus(f int) {
+	m.focus = f
+	for i := range m.inputs {
+		if i == f {
+			m.inputs[i].Focus()
+		} else {
+			m.inputs[i].Blur()
+		}
+	}
 }
 
 func (m Model) save() (Model, tea.Cmd) {
@@ -185,7 +124,7 @@ func (m Model) save() (Model, tea.Cmd) {
 	if v, err := strconv.Atoi(strings.TrimSpace(m.inputs[3].Value())); err == nil {
 		m.ctx.Config.HealthCheckInterval = v
 	}
-	m.ctx.Config.LogLevel = m.logLevel.value()
+	m.ctx.Config.LogLevel = m.logOpts[m.logIdx]
 
 	path, err := config.GetGlobalConfigPath()
 	if err == nil {
@@ -196,28 +135,6 @@ func (m Model) save() (Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, func() tea.Msg { return MsgSaveConfig{} }
-}
-
-func (m *Model) nextField() {
-	m.setFocus((m.focus + 1) % totalFields)
-}
-func (m *Model) prevField() {
-	f := m.focus - 1
-	if f < 0 {
-		f = totalFields - 1
-	}
-	m.setFocus(f)
-}
-func (m *Model) setFocus(f int) {
-	m.focus = f
-	m.logLevel.focused = (f == totalFields-1)
-	for i := range m.inputs {
-		if i == f {
-			m.inputs[i].Focus()
-		} else {
-			m.inputs[i].Blur()
-		}
-	}
 }
 
 func (m Model) View() string {
@@ -237,11 +154,29 @@ func (m Model) View() string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString(m.logLevel.render(m.ctx))
+	// Render log level dropdown inline
+	dropdownFocused := m.focus == totalFields-1
+	var labelStyle, arrowStyle lipgloss.Style
+	if dropdownFocused {
+		labelStyle = lipgloss.NewStyle().Foreground(th.WarningText)
+		arrowStyle = lipgloss.NewStyle().Foreground(th.WarningText)
+	} else {
+		labelStyle = lipgloss.NewStyle().Foreground(th.PrimaryText)
+		arrowStyle = lipgloss.NewStyle().Foreground(th.FaintText)
+	}
+	var opts []string
+	for i, o := range m.logOpts {
+		if i == m.logIdx {
+			opts = append(opts, lipgloss.NewStyle().Foreground(th.PrimaryText).Bold(dropdownFocused).Render(o))
+		} else {
+			opts = append(opts, lipgloss.NewStyle().Foreground(th.FaintText).Render(o))
+		}
+	}
+	sep := lipgloss.NewStyle().Foreground(th.FaintText).Render(" / ")
+	b.WriteString(labelStyle.Render("Log Level: ") + arrowStyle.Render("◀ ") + strings.Join(opts, sep) + arrowStyle.Render(" ▶"))
 	b.WriteString("\n\n")
 
-	hintStyle := lipgloss.NewStyle().Foreground(th.FaintText)
-	b.WriteString(hintStyle.Render("↑/↓ tab: navigate  ◀/▶: cycle dropdown  ctrl+s: save  esc: cancel"))
+	b.WriteString(lipgloss.NewStyle().Foreground(th.FaintText).Render("↑/↓ tab: navigate  ◀/▶: cycle dropdown  ctrl+s: save  esc: cancel"))
 
 	if m.err != nil {
 		b.WriteString("\n\n")

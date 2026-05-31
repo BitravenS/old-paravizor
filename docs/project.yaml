@@ -4,6 +4,7 @@ project:
   name: "Example Recon Project"
   description: "Bug bounty recon project for example.com"
   pipeline: "default-recon" # looks inside ~/.config/paravizor/pipelines for the pipeline definition
+  created_at: 2026-03-30T12:00:00Z
   scope:
     include:
       - "example.com"
@@ -18,5 +19,3 @@ project:
       budget: 50 # requests per second
       burst_reserve_percentage: 10
       burst_reserve_min: 5
-
-  

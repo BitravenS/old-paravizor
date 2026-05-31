@@ -16,14 +16,12 @@ import (
 
 	"github.com/bitravens/paravizor/v1/internal/bootstrap"
 	"github.com/bitravens/paravizor/v1/internal/tui"
-	"github.com/bitravens/paravizor/v1/internal/tui/constants"
-	pctx "github.com/bitravens/paravizor/v1/internal/tui/context"
 )
 
 var (
 	version = "0.1.0"
 
-	logo = lipgloss.NewStyle().Foreground(pctx.LogoColor).MarginBottom(1).SetString(constants.Logo)
+	logo = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).MarginBottom(1).SetString("Paravizor")
 
 	bootstrapInit = bootstrap.Init
 )

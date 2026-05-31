@@ -28,6 +28,7 @@ type Engine struct {
 	toolReg *tool.Registry
 	runner  *tool.Runner
 	logger  *slog.Logger
+	scope   *ScopeEngine
 
 	mu         sync.Mutex
 	nodeStatus map[string]NodeStatus
@@ -59,6 +60,7 @@ func NewEngine(
 	toolReg *tool.Registry,
 	runner *tool.Runner,
 	logger *slog.Logger,
+	scope *ScopeEngine,
 ) *Engine {
 	e := &Engine{
 		dag:        dag,
@@ -67,6 +69,7 @@ func NewEngine(
 		toolReg:    toolReg,
 		runner:     runner,
 		logger:     logger,
+		scope:      scope,
 		nodeStatus: make(map[string]NodeStatus),
 		nodeStats:  make(map[string]*NodeStats),
 		pendingUp:  make(map[string]int),
@@ -96,25 +99,54 @@ func (e *Engine) Run(ctx context.Context) error {
 
 	startTime := time.Now()
 
-	// Process nodes in topological order.
-	for _, nodeID := range e.dag.Order {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(e.dag.Nodes))
 
+	// Process nodes in parallel.
+	for id := range e.dag.Nodes {
+		nodeID := id
 		nodeCfg := e.dag.Nodes[nodeID]
-		if err := e.processNode(ctx, nodeCfg); err != nil {
-			e.logger.Error("node failed", "node", nodeID, "error", err)
-			e.setStatus(nodeID, NodeStatusError)
-			e.bus.Publish(events.NodeError{
-				NodeID: nodeID,
-				Err:    err,
-				Fatal:  true,
-				Time:   time.Now(),
-			})
-			continue
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			// Signal downstream nodes that this node is done.
+			defer func() {
+				e.mu.Lock()
+				for _, downstreamID := range e.dag.Edges[nodeID] {
+					e.pendingUp[downstreamID]--
+				}
+				e.mu.Unlock()
+			}()
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			if err := e.processNode(ctx, nodeCfg); err != nil {
+				e.logger.Error("node failed", "node", nodeID, "error", err)
+				e.setStatus(nodeID, NodeStatusError)
+				e.bus.Publish(events.NodeError{
+					NodeID: nodeID,
+					Err:    err,
+					Fatal:  true,
+					Time:   time.Now(),
+				})
+				errCh <- err
+				e.cancel()
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// Check if any node failed
+	for err := range errCh {
+		if err != nil {
+			return err
 		}
-		e.setStatus(nodeID, NodeStatusCompleted)
 	}
 
 	totalItems := 0
@@ -136,6 +168,17 @@ func (e *Engine) Run(ctx context.Context) error {
 
 func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 	nodeID := nodeCfg.ID
+
+	// Missing tool check
+	if nodeCfg.Tool != "" {
+		def, ok := e.toolReg.Get(nodeCfg.Tool)
+		if !ok || !def.Available {
+			e.logger.Warn("tool not available, skipping node", "tool", nodeCfg.Tool, "node", nodeID)
+			e.setStatus(nodeID, NodeStatusSkipped)
+			return nil
+		}
+	}
+
 	e.setStatus(nodeID, NodeStatusActive)
 
 	e.bus.Publish(events.NodeStarted{
@@ -148,13 +191,23 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 	totalIn := 0
 	totalOut := 0
 
+	accumulator := NewBatchAccumulator(nodeID, nodeCfg.Batch)
+	upstreamDone := func() bool {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.pendingUp[nodeID] <= 0
+	}
+
 	for {
-		states, err := e.store.GetPendingItems(ctx, nodeID, consumes, LIMIT)
+		states, err := accumulator.WaitAndCollect(ctx, e.store, consumes, LIMIT, upstreamDone)
 		if err != nil {
-			return fmt.Errorf("get pending items: %w", err)
+			return fmt.Errorf("wait and collect pending items: %w", err)
+		}
+		if len(states) == 0 && upstreamDone() {
+			break
 		}
 		if len(states) == 0 {
-			break
+			continue
 		}
 
 		totalIn += len(states)
@@ -208,13 +261,16 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 		for _, item := range states {
 			now := time.Now()
 			ct := sql.NullTime{Time: now, Valid: true}
-			e.store.SetPipelineState(ctx, &db.PipelineState{
+			err := e.store.SetPipelineState(ctx, &db.PipelineState{
 				ItemType:    item.ItemType,
 				ItemID:      item.ItemID,
 				NodeID:      nodeID,
 				Status:      "completed",
 				CompletedAt: ct,
 			})
+			if err != nil {
+				e.logger.Warn("failed to mark item as completed", "node", nodeID, "item", item.ItemID, "error", err)
+			}
 		}
 
 		// Store output items and enqueue for downstream nodes
@@ -228,6 +284,8 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 	if totalIn == 0 {
 		e.logger.Info("no pending items", "node", nodeID)
 	}
+
+	e.setStatus(nodeID, NodeStatusCompleted)
 
 	e.mu.Lock()
 	e.nodeStats[nodeID].ItemsIn = totalIn
@@ -251,10 +309,6 @@ func (e *Engine) runSingle(ctx context.Context, nodeCfg *NodeConfig, input []str
 	def, ok := e.toolReg.Get(toolName)
 	if !ok {
 		return nil, fmt.Errorf("tool %s not found in registry", toolName)
-	}
-	if !def.Available {
-		e.logger.Warn("tool not available, skipping", "tool", toolName, "node", nodeCfg.ID)
-		return nil, nil
 	}
 
 	result, err := e.runner.Run(ctx, def, input, nodeCfg.ID)
@@ -410,12 +464,31 @@ func (e *Engine) storeAndRoute(ctx context.Context, nodeCfg *NodeConfig, out []i
 			if route.Condition != "" && !EvalCondition(route.Condition, item) {
 				continue
 			}
-			e.store.SetPipelineState(ctx, &db.PipelineState{
+
+			// Apply scope filtering
+			if e.scope != nil && !e.scope.IsInScope(item) {
+				e.bus.Publish(events.OutOfScopeFiltered{
+					ItemType: string(item.Type()),
+					ItemID:   itemID,
+					NodeID:   nodeCfg.ID,
+					Reason:   "not in scope",
+					Time:     time.Now(),
+				})
+				e.mu.Lock()
+				e.nodeStats[nodeCfg.ID].ItemsFiltered++
+				e.mu.Unlock()
+				continue
+			}
+
+			err := e.store.SetPipelineState(ctx, &db.PipelineState{
 				ItemType: string(item.Type()),
 				ItemID:   itemID,
 				NodeID:   route.To,
 				Status:   "pending",
 			})
+			if err != nil {
+				e.logger.Warn("failed to enqueue item for downstream", "node", route.To, "item", itemID, "error", err)
+			}
 		}
 
 		stored++
