@@ -154,6 +154,13 @@ func runPipeline(
 	}
 	log.Debug("dag built", "nodes", len(dag.Nodes), "roots", len(dag.RootNodes()))
 
+	// Recover interrupted sessions
+	if count, err := st.ResetProcessingItems(ctx); err != nil {
+		log.Error("failed to reset processing items", "err", err)
+	} else if count > 0 {
+		log.Info("recovered interrupted items", "count", count)
+	}
+
 	if err := seedRootInputs(ctx, st, dag, pipeline, includeTargets); err != nil {
 		log.Error("seed inputs failed", "err", err)
 		return fmt.Errorf("seed initial inputs: %w", err)
@@ -383,19 +390,30 @@ func (m *Model) applyEvent(e events.Event) {
 		m.appendLog(fmt.Sprintf("[%s] Node error: %s — %v", ts, v.NodeID, v.Err))
 
 	case events.DomainDiscovered:
-		_ = ts
-		_ = v
+		m.domainsCount++
+		// The event doesn't tell us if it's live or not right now.
+		// If we need to know live domains, we might need a separate check or infer from source.
+		// For now we'll just track total.
+		if v.Source == "dnsx-live" {
+			m.liveCount++
+		}
 
 	case events.URLDiscovered:
-		_ = ts
-		_ = v
+		m.urlsCount++
 
 	case events.FindingDiscovered:
+		m.findingsCount++
 		log.Info("event item.finding.discovered", "severity", v.Severity, "title", v.Title, "node_id", v.NodeID)
 		m.appendLog(fmt.Sprintf("[%s] finding [%s] %s  (by: %s)", ts, v.Severity, v.Title, v.Scanner))
 
 	case events.ProcessStarted:
 		log.Info("event process.started", "tool", v.ToolName, "pid", v.PID)
+		m.activeProcesses[v.ProcessID] = processRow{
+			ID:     v.ProcessID,
+			Tool:   v.ToolName,
+			PID:    v.PID,
+			NodeID: "unknown", // Event doesn't have NodeID, but we can guess or leave unknown
+		}
 		m.appendLog(fmt.Sprintf("[%s] exec: %s (pid %d)", ts, v.ToolName, v.PID))
 
 	case events.ProcessOutput:
@@ -406,6 +424,14 @@ func (m *Model) applyEvent(e events.Event) {
 
 	case events.ProcessCompleted:
 		log.Info("event process.completed", "tool", v.ToolName, "exit_code", v.ExitCode, "duration", v.Duration)
+		delete(m.activeProcesses, v.ProcessID)
+
+	case events.RateLimitRebalanced:
+		m.rateAllocations = v.Allocations
+		m.totalBudget = v.TotalBudget
+
+	case events.RateThrottled:
+		m.appendLog(fmt.Sprintf("[%s] Throttled %s: %.1f -> %.1f req/s (%s)", ts, v.NodeID, v.OldRate, v.NewRate, v.Reason))
 
 	default:
 		log.Debug("event other", "type", e.EventType())

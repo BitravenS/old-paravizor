@@ -4,6 +4,9 @@ package projectview
 import (
 	gocontext "context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +14,7 @@ import (
 	"github.com/bitravens/paravizor/v1/internal/engine"
 	"github.com/bitravens/paravizor/v1/internal/events"
 	proj "github.com/bitravens/paravizor/v1/internal/project"
+	"github.com/bitravens/paravizor/v1/internal/store"
 	tuictx "github.com/bitravens/paravizor/v1/internal/tui/context"
 )
 
@@ -32,6 +36,7 @@ type pageState int
 const (
 	stateCreate  pageState = iota // new-project form
 	stateProject                  // project view with pipeline nodes + log
+	stateEditScope                // editing in/out of scope
 )
 
 // nodeRow is the UI representation of a single pipeline node.
@@ -42,6 +47,13 @@ type nodeRow struct {
 	Status   engine.NodeStatus
 	ItemsIn  int
 	ItemsOut int
+}
+
+type processRow struct {
+	ID     int64
+	Tool   string
+	PID    int
+	NodeID string
 }
 
 const maxLogLines = 200
@@ -66,6 +78,23 @@ type Model struct {
 	running    bool
 	runErr     error
 
+	// ── Dashboard Metrics ──
+	domainsCount  int
+	liveCount     int
+	urlsCount     int
+	findingsCount int
+
+	activeProcesses map[int64]processRow
+	rateAllocations map[string]float64
+	totalBudget     float64
+
+	pipelineCursor int
+	processCursor  int
+	activePanel    int // 0: pipeline, 1: events, 2: processes
+	selectedNode   *nodeRow
+	showNodeLogs   bool
+	nodeLogsText   string
+
 	// channels shared with goroutine (allocated once per run)
 	eventCh chan events.Event
 	doneCh  chan error
@@ -74,10 +103,12 @@ type Model struct {
 	// layout
 	width  int
 	height int
+
+	store *store.Store
 }
 
 func (m Model) Focused() bool {
-	return m.state == stateCreate
+	return m.state == stateCreate || m.state == stateEditScope
 }
 
 // ProjectDir returns the active project directory for this view.
@@ -89,12 +120,15 @@ func (m Model) ProjectDir() string {
 
 // NewModel creates a project page. If existingDir is non-empty the form is
 // skipped and the project is loaded directly.
-func NewModel(ctx *tuictx.ProgramContext, existingDir string) Model {
+func NewModel(ctx *tuictx.ProgramContext, existingDir string, st *store.Store) Model {
 	m := Model{
-		ctx:    ctx,
-		state:  stateCreate,
-		width:  ctx.Window.Width,
-		height: ctx.Window.Height,
+		ctx:             ctx,
+		store:           st,
+		state:           stateCreate,
+		width:           ctx.Window.Width,
+		height:          ctx.Window.Height,
+		activeProcesses: make(map[int64]processRow),
+		rateAllocations: make(map[string]float64),
 	}
 
 	m.inputs = buildInputs(ctx)
@@ -117,6 +151,38 @@ func (m *Model) loadExistingProject(dir string) {
 	m.projCfg = &pcfg
 	m.state = stateProject
 	m.rebuildNodes()
+	m.loadMetricsFromStore()
+}
+
+// loadMetricsFromStore hydrates the TUI counts from the database on resume.
+func (m *Model) loadMetricsFromStore() {
+	if m.store == nil || m.store.DB() == nil {
+		return
+	}
+	ctx := gocontext.Background()
+	var count int
+
+	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains").Scan(&count)
+	m.domainsCount = count
+
+	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains WHERE source = 'dnsx-live'").Scan(&count)
+	m.liveCount = count
+
+	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM urls").Scan(&count)
+	m.urlsCount = count
+
+	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM findings").Scan(&count)
+	m.findingsCount = count
+
+	for i, n := range m.nodes {
+		var outCount int
+		_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM pipeline_state WHERE node_id = ? AND status = 'completed'", n.ID).Scan(&outCount)
+		m.nodes[i].ItemsOut = outCount
+		
+		if outCount > 0 {
+			m.nodes[i].Status = engine.NodeStatusCompleted
+		}
+	}
 }
 
 // rebuildNodes syncs m.nodes from ctx.Pipeline.Nodes.
@@ -200,6 +266,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) []tea.Cmd {
 	switch m.state {
 	case stateCreate:
 		return m.handleCreateKey(msg)
+	case stateEditScope:
+		return m.handleEditScopeKey(msg)
 	case stateProject:
 		return m.handleProjectKey(msg)
 	}
@@ -207,6 +275,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) []tea.Cmd {
 }
 
 func (m *Model) handleProjectKey(msg tea.KeyMsg) []tea.Cmd {
+	if m.showNodeLogs {
+		switch msg.String() {
+		case "esc", "enter", "q":
+			m.showNodeLogs = false
+		}
+		return nil
+	}
+
 	switch msg.String() {
 	case "esc":
 		if m.running {
@@ -215,9 +291,69 @@ func (m *Model) handleProjectKey(msg tea.KeyMsg) []tea.Cmd {
 		}
 		return []tea.Cmd{func() tea.Msg { return MsgBack{} }}
 
+	case "e":
+		if !m.running && m.projCfg != nil {
+			m.state = stateEditScope
+			m.inputs = buildScopeInputs(m.ctx, m.projCfg)
+			m.focus = 0
+		}
+
 	case "ctrl+r":
 		if !m.running {
 			return []tea.Cmd{m.startRun()}
+		}
+
+	case "tab":
+		m.activePanel = (m.activePanel + 1) % 3
+
+	case "shift+tab":
+		m.activePanel--
+		if m.activePanel < 0 {
+			m.activePanel = 2
+		}
+
+	case "down", "j":
+		if m.activePanel == 0 {
+			if m.pipelineCursor < len(m.nodes)-1 {
+				m.pipelineCursor++
+			}
+		} else if m.activePanel == 2 {
+			if m.processCursor < len(m.activeProcesses)-1 {
+				m.processCursor++
+			}
+		}
+
+	case "up", "k":
+		if m.activePanel == 0 {
+			if m.pipelineCursor > 0 {
+				m.pipelineCursor--
+			}
+		} else if m.activePanel == 2 {
+			if m.processCursor > 0 {
+				m.processCursor--
+			}
+		}
+
+	case "enter":
+		if m.activePanel == 0 && m.pipelineCursor < len(m.nodes) {
+			node := m.nodes[m.pipelineCursor]
+			m.showNodeLogs = true
+			m.nodeLogsText = m.loadNodeLogs(node.ID)
+		} else if m.activePanel == 2 {
+			// Get process log
+			if m.processCursor >= 0 && len(m.activeProcesses) > 0 {
+				var procs []processRow
+				for _, p := range m.activeProcesses {
+					procs = append(procs, p)
+				}
+				sort.Slice(procs, func(i, j int) bool {
+					return procs[i].ID < procs[j].ID
+				})
+				if m.processCursor < len(procs) {
+					m.showNodeLogs = true
+					m.nodeLogsText = m.loadNodeLogs(procs[m.processCursor].NodeID)
+				}
+			}
 		}
 	}
 	return nil
@@ -231,12 +367,43 @@ func (m *Model) appendLog(line string) {
 	}
 }
 
+func (m *Model) loadNodeLogs(nodeID string) string {
+	if m.projectDir == "" || nodeID == "" {
+		return "No logs available."
+	}
+	dir := filepath.Join(m.projectDir, "logs", nodeID)
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) == 0 {
+		return "No logs found for node " + nodeID
+	}
+	
+	// Just read the latest stderr/stdout
+	var latestFile os.DirEntry
+	for _, e := range entries {
+		if !e.IsDir() {
+			latestFile = e
+		}
+	}
+	if latestFile == nil {
+		return "No logs found for node " + nodeID
+	}
+	
+	path := filepath.Join(dir, latestFile.Name())
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "Error reading log: " + err.Error()
+	}
+	return string(content)
+}
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (m Model) View() string {
 	switch m.state {
 	case stateCreate:
 		return m.viewCreate()
+	case stateEditScope:
+		return m.viewEditScope()
 	case stateProject:
 		return m.viewProject()
 	}

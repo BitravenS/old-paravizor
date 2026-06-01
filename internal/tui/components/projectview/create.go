@@ -28,7 +28,8 @@ func buildInputs(ctx *tuictx.ProgramContext) []textinput.Model {
 
 	specs := []fieldSpec{
 		{"Project Name: ", "my-target", ""},
-		{"Target Domains: ", "example.com, *.example.com", ""},
+		{"Target Domains (In Scope): ", "example.com, *.example.com", ""},
+		{"Out of Scope: ", "out-of-scope.example.com", ""},
 		{"Base Directory: ", defaultBase, defaultBase},
 		{"Pipeline: ", "default", pipeline},
 	}
@@ -91,7 +92,7 @@ func (m *Model) submitCreate() tea.Cmd {
 		return nil
 	}
 
-	baseDir := strings.TrimSpace(m.inputs[2].Value())
+	baseDir := strings.TrimSpace(m.inputs[3].Value())
 	if baseDir == "" {
 		baseDir = os.Getenv("HOME") + "/recon"
 	}
@@ -104,12 +105,20 @@ func (m *Model) submitCreate() tea.Cmd {
 		}
 	}
 
-	pipeline := strings.TrimSpace(m.inputs[3].Value())
+	outOfScopeRaw := strings.TrimSpace(m.inputs[2].Value())
+	var excludes []string
+	for _, d := range strings.FieldsFunc(outOfScopeRaw, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if d = strings.TrimSpace(d); d != "" {
+			excludes = append(excludes, d)
+		}
+	}
+
+	pipeline := strings.TrimSpace(m.inputs[4].Value())
 	if pipeline == "" {
 		pipeline = "default"
 	}
 
-	scope := proj.ScopeConfig{Include: includes}
+	scope := proj.ScopeConfig{Include: includes, Exclude: excludes}
 	cfg, err := proj.CreateProject(name, "", baseDir, pipeline, "", nil, scope)
 	if err != nil {
 		m.formErr = err
@@ -153,6 +162,130 @@ func (m *Model) addRecentProject(dir string) {
 	if path, err := config.GetGlobalConfigPath(); err == nil {
 		_ = config.WriteConfig(path, *cfg)
 	}
+}
+
+// ── Edit Scope form view ──────────────────────────────────────────────────────
+
+func buildScopeInputs(ctx *tuictx.ProgramContext, cfg *proj.ProjectConfig) []textinput.Model {
+	inScope := strings.Join(cfg.Scope.Include, ", ")
+	outScope := strings.Join(cfg.Scope.Exclude, ", ")
+
+	specs := []struct{ prompt, placeholder, value string }{
+		{"Target Domains (In Scope): ", "example.com, *.example.com", inScope},
+		{"Out of Scope: ", "out-of-scope.example.com", outScope},
+	}
+
+	inputs := make([]textinput.Model, len(specs))
+	for i, s := range specs {
+		t := textinput.New()
+		styles := textinput.DefaultDarkStyles()
+		styles.Focused.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.WarningText)
+		styles.Focused.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
+		styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.SecondaryText)
+		styles.Blurred.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
+		styles.Cursor.Color = ctx.Theme.WarningText
+
+		t.SetStyles(styles)
+		t.Prompt = s.prompt
+		t.Placeholder = s.placeholder
+		t.SetValue(s.value)
+		if i == 0 {
+			t.Focus()
+		}
+		inputs[i] = t
+	}
+	return inputs
+}
+
+func (m *Model) handleEditScopeKey(msg tea.KeyMsg) []tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		m.state = stateProject
+		m.formErr = nil
+		return nil
+
+	case "tab", "down":
+		m.nextInput()
+
+	case "shift+tab", "up":
+		m.prevInput()
+
+	case "enter", "ctrl+s":
+		if m.focus < len(m.inputs)-1 && msg.String() == "enter" {
+			m.nextInput()
+		} else {
+			return []tea.Cmd{m.submitEditScope()}
+		}
+	}
+	return nil
+}
+
+func (m *Model) submitEditScope() tea.Cmd {
+	inRaw := strings.TrimSpace(m.inputs[0].Value())
+	var includes []string
+	for _, d := range strings.FieldsFunc(inRaw, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if d = strings.TrimSpace(d); d != "" {
+			includes = append(includes, d)
+		}
+	}
+
+	outRaw := strings.TrimSpace(m.inputs[1].Value())
+	var excludes []string
+	for _, d := range strings.FieldsFunc(outRaw, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if d = strings.TrimSpace(d); d != "" {
+			excludes = append(excludes, d)
+		}
+	}
+
+	m.projCfg.Scope.Include = includes
+	m.projCfg.Scope.Exclude = excludes
+
+	err := proj.WriteProjectConfig(m.projectDir, *m.projCfg)
+	if err != nil {
+		m.formErr = fmt.Errorf("failed to save scope: %w", err)
+		return nil
+	}
+
+	m.state = stateProject
+	m.formErr = nil
+	m.appendLog("Project scope updated successfully.")
+	return nil
+}
+
+func (m Model) viewEditScope() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(m.ctx.Theme.PrimaryText).
+		Background(m.ctx.Theme.SelectedBackground).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	b.WriteString(titleStyle.Render("Edit Scope"))
+	b.WriteString("\n\n")
+
+	for i, inp := range m.inputs {
+		b.WriteString(inp.View())
+		if i < len(m.inputs)-1 {
+			b.WriteString("\n\n")
+		}
+	}
+
+	helpStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText)
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("↑/↓ Tab: Navigate  •  Enter/ctrl+s: Save  •  Esc: Cancel"))
+
+	if m.formErr != nil {
+		errStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.ErrorText)
+		b.WriteString("\n\n")
+		b.WriteString(errStyle.Render(fmt.Sprintf("Error: %v", m.formErr)))
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.ctx.Theme.PrimaryBorder).
+		Padding(1, 4).
+		Render(b.String())
 }
 
 // ── Focus helpers ─────────────────────────────────────────────────────────────

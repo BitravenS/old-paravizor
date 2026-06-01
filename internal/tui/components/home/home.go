@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -102,9 +101,6 @@ type Model struct {
 	pipelineScroll int
 	toolCursor     int
 	toolScroll     int
-
-	// Animation
-	cat CatAnimation
 }
 
 func NewModel(ctx *context.ProgramContext) Model {
@@ -128,11 +124,7 @@ func NewModel(ctx *context.ProgramContext) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(animTick(), loadCatalog())
-}
-
-func animTick() tea.Cmd {
-	return tea.Tick(AnimInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+	return tea.Batch(loadCatalog())
 }
 
 func loadCatalog() tea.Cmd {
@@ -215,19 +207,14 @@ func yamlFiles(dir string) []string {
 }
 
 func (m Model) Focused() bool {
-	return m.leftState == panelCreate
+	return false
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
 		m.adjustScroll()
-
-	case animTickMsg:
-		m.cat.Tick()
-		return m, animTick()
 
 	case catalogLoadedMsg:
 		m.pipelines = msg.pipelines
@@ -235,27 +222,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.adjustScroll()
 
 	case tea.KeyMsg:
-		// Inline create form active
-		if m.leftState == panelCreate {
-			switch msg.String() {
-			case "esc":
-				m.leftState = panelActions
-				m.createInput.Blur()
-			case "enter":
-				path := strings.TrimSpace(m.createInput.Value())
-				if path != "" {
-					m.createInput.Blur()
-					return m, func() tea.Msg {
-						return ActionMsg{Action: Item{Type: ActionCreateProject, ProjectPath: path}}
-					}
-				}
-			default:
-				m.createInput, cmd = m.createInput.Update(msg)
-				return m, cmd
-			}
-			return m, nil
-		}
-
 		switch msg.String() {
 		case "t":
 			m.catalogTab = 1 - m.catalogTab
@@ -291,11 +257,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.focus == focusLeft {
-				// Show inline create form
-				m.leftState = panelCreate
-				m.createInput.SetValue("")
-				m.createInput.Focus()
+				if m.actionCursor == 0 { // New Project
+					return m, func() tea.Msg {
+						return ActionMsg{Action: Item{Type: ActionCreateProject, ProjectPath: ""}}
+					}
+				}
 			} else if m.focus == focusRight {
+
 				if m.catalogTab == 0 && m.pipelineCursor < len(m.pipelines) {
 					entry := m.pipelines[m.pipelineCursor]
 					return m, func() tea.Msg { return CatalogSelectMsg{Entry: entry} }
@@ -305,10 +273,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				}
 			}
 		case "n":
-			if m.leftState != panelCreate {
-				m.leftState = panelCreate
-				m.createInput.SetValue("")
-				m.createInput.Focus()
+			return m, func() tea.Msg {
+				return ActionMsg{Action: Item{Type: ActionCreateProject, ProjectPath: ""}}
 			}
 		}
 	}
@@ -317,10 +283,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m *Model) adjustScroll() {
 	minBottomH := 8
-	topH := AnimHeight + 4
-	if m.h-topH < minBottomH {
-		topH = m.h - minBottomH
-	}
+	topH := m.h - minBottomH
 	if topH < 6 {
 		topH = 6
 	}

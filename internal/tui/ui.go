@@ -61,7 +61,7 @@ func NewModel(location, version string, s *store.Store) Model {
 		showFooter:  showFooter,
 		sidebarView: sidebar.NewModel(ctx),
 		homeView:    home.NewModel(ctx),
-		projectView: projectview.NewModel(ctx, projInitDir),
+		projectView: projectview.NewModel(ctx, projInitDir, s),
 		footerView:  footer.NewModel(ctx, s),
 		popupView:   popup.NewModel(ctx),
 		toasterView: toaster.NewModel(ctx),
@@ -157,7 +157,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Sidebar: user selected a recent project.
 	case sidebar.ProjectSelectedMsg:
-		m.projectView = projectview.NewModel(m.Ctx, msg.Path)
+		m.projectView = projectview.NewModel(m.Ctx, msg.Path, m.store)
 		m.Ctx.ProjectDir = msg.Path
 		if p, err := project.LoadProject(msg.Path); err == nil {
 			m.Ctx.Project = &p
@@ -170,14 +170,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case home.ActionMsg:
 		switch msg.Action.Type {
 		case home.ActionCreateProject:
-			m.projectView = projectview.NewModel(m.Ctx, "")
+			m.projectView = projectview.NewModel(m.Ctx, "", m.store)
 			m.Ctx.ProjectDir = ""
 			m.Ctx.Project = nil
 			m.state = ViewStateProject
 			m.recalculateLayout()
 			return m, m.projectView.Init()
 		case home.ActionOpenProject:
-			m.projectView = projectview.NewModel(m.Ctx, msg.Action.ProjectPath)
+			m.projectView = projectview.NewModel(m.Ctx, msg.Action.ProjectPath, m.store)
 			m.Ctx.ProjectDir = msg.Action.ProjectPath
 			if p, err := project.LoadProject(msg.Action.ProjectPath); err == nil {
 				m.Ctx.Project = &p

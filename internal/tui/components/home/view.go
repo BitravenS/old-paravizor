@@ -34,7 +34,7 @@ func (m Model) View() string {
 
 func (m Model) renderLeft(w int) string {
 	th := m.ctx.Theme
-	inner := w - 4 // border(2) + padding(2×1)
+	inner := w - 6 // border(2) + padding(2×2)
 	if inner < 0 {
 		inner = 0
 	}
@@ -96,10 +96,7 @@ func (m Model) renderLeft(w int) string {
 
 func (m Model) renderRight(w int) string {
 	minBottomH := 8
-	topH := AnimHeight + 4
-	if m.h-topH < minBottomH {
-		topH = m.h - minBottomH
-	}
+	topH := m.h - minBottomH
 	if topH < 6 {
 		topH = 6
 	}
@@ -115,26 +112,18 @@ func (m Model) renderRight(w int) string {
 
 func (m Model) renderTop(w, h int) string {
 	th := m.ctx.Theme
-	innerW := w - 4 // border(2) + padding(2×1)
+	innerW := w - 6 // border(2) + padding(2×1)
 	if innerW < 1 {
 		innerW = 1
 	}
 
-	animW := AnimWidth
-	if innerW-animW < 10 {
-		animW = innerW - 10
-	}
-	if animW < 0 {
-		animW = 0
-	}
-	infoW := innerW - animW
+	infoW := innerW
 	if infoW < 0 {
 		infoW = 0
 	}
 
 	combined := lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.NewStyle().Width(infoW).Render(m.renderInfoContent(infoW)),
-		m.cat.Render(th),
 	)
 	return box(combined, w, h, th.FaintBorder, th.PrimaryText)
 }
@@ -171,7 +160,7 @@ func (m Model) renderInfoContent(w int) string {
 
 func (m Model) renderCatalog(w, h int) string {
 	th := m.ctx.Theme
-	inner := w - 4
+	inner := w - 6
 	if inner < 1 {
 		inner = 1
 	}
