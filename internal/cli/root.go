@@ -26,6 +26,23 @@ var (
 	logo = lipgloss.NewStyle().Foreground(pctx.LogoColor).MarginBottom(1).SetString(constants.Logo)
 
 	bootstrapInit = bootstrap.Init
+	startTUI      = func(cmd *cobra.Command, location string) error {
+		debug, err := cmd.Root().Flags().GetBool("debug")
+		if err != nil {
+			return fmt.Errorf("parse debug flag: %w", err)
+		}
+
+		model, logger := createModel(location, debug)
+		if logger != nil {
+			defer logger.Close()
+		}
+
+		p := tea.NewProgram(model)
+		if _, err := p.Run(); err != nil {
+			return fmt.Errorf("start TUI: %w", err)
+		}
+		return nil
+	}
 )
 
 func setDebugLogLevel() {
@@ -136,21 +153,7 @@ paravizor -v
 			return runBootstrap(cmd)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			debug, err := cmd.Flags().GetBool("debug")
-			if err != nil {
-				return fmt.Errorf("parse debug flag: %w", err)
-			}
-
-			model, logger := createModel("", debug)
-			if logger != nil {
-				defer logger.Close()
-			}
-
-			p := tea.NewProgram(model)
-			if _, err := p.Run(); err != nil {
-				return fmt.Errorf("start TUI: %w", err)
-			}
-			return nil
+			return startTUI(cmd, "")
 		},
 	}
 	cmd.SetVersionTemplate(`paravizor {{printf "version %s\n" .Version}}`)

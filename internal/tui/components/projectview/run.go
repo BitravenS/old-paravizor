@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,7 +47,7 @@ func (m *Model) startRun() tea.Cmd {
 	if m.projCfg != nil {
 		includeTargets = append(includeTargets, m.projCfg.Scope.Include...)
 	}
-	configDir, _ := utils.PrvzrConfigDir()
+	configDir, configDirErr := utils.PrvzrConfigDir()
 
 	pipelineName := ""
 	if pipeline != nil {
@@ -60,6 +61,10 @@ func (m *Model) startRun() tea.Cmd {
 	)
 
 	go func() {
+		if configDirErr != nil {
+			doneCh <- fmt.Errorf("resolve config dir: %w", configDirErr)
+			return
+		}
 		doneCh <- runPipeline(ctx, eventCh, projectDir, pipeline, cfgDB, includeTargets, configDir)
 	}()
 
@@ -125,7 +130,7 @@ func runPipeline(
 		}
 	})
 
-	toolsDir := configDir + "/tools"
+	toolsDir := filepath.Join(configDir, "tools")
 	reg := tool.NewRegistry()
 	if err := reg.LoadDir(toolsDir); err != nil {
 		log.Error("tool registry load failed", "dir", toolsDir, "err", err)
@@ -144,7 +149,7 @@ func runPipeline(
 		return fmt.Errorf("pipeline validation against registry: %w", err)
 	}
 
-	logsDir := projectDir + "/logs"
+	logsDir := filepath.Join(projectDir, "logs")
 	runner := tool.NewRunner(bus, logsDir)
 
 	dag, err := engine.BuildDAG(pipeline)
@@ -408,11 +413,12 @@ func (m *Model) applyEvent(e events.Event) {
 
 	case events.ProcessStarted:
 		log.Info("event process.started", "tool", v.ToolName, "pid", v.PID)
-		m.activeProcesses[v.ProcessID] = processRow{
-			ID:     v.ProcessID,
+		processID := processEventID(v.ProcessID, v.PID)
+		m.activeProcesses[processID] = processRow{
+			ID:     processID,
 			Tool:   v.ToolName,
 			PID:    v.PID,
-			NodeID: "unknown", // Event doesn't have NodeID, but we can guess or leave unknown
+			NodeID: v.NodeID,
 		}
 		m.appendLog(fmt.Sprintf("[%s] exec: %s (pid %d)", ts, v.ToolName, v.PID))
 
@@ -424,7 +430,7 @@ func (m *Model) applyEvent(e events.Event) {
 
 	case events.ProcessCompleted:
 		log.Info("event process.completed", "tool", v.ToolName, "exit_code", v.ExitCode, "duration", v.Duration)
-		delete(m.activeProcesses, v.ProcessID)
+		delete(m.activeProcesses, processEventID(v.ProcessID, v.PID))
 
 	case events.RateLimitRebalanced:
 		m.rateAllocations = v.Allocations
@@ -433,7 +439,20 @@ func (m *Model) applyEvent(e events.Event) {
 	case events.RateThrottled:
 		m.appendLog(fmt.Sprintf("[%s] Throttled %s: %.1f -> %.1f req/s (%s)", ts, v.NodeID, v.OldRate, v.NewRate, v.Reason))
 
+	case events.LogMessage:
+		if v.Level == "" {
+			v.Level = "info"
+		}
+		m.appendLog(fmt.Sprintf("[%s] %s: %s", ts, strings.ToUpper(v.Level), v.Message))
+
 	default:
 		log.Debug("event other", "type", e.EventType())
 	}
+}
+
+func processEventID(processID int64, pid int) int64 {
+	if processID != 0 {
+		return processID
+	}
+	return int64(pid)
 }

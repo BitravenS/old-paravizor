@@ -146,6 +146,32 @@ func (s *Store) WriteTx(ctx context.Context, fn func(q *db.Queries) error) error
 	return tx.Commit()
 }
 
+func (s *Store) writeTxLastInsertID(ctx context.Context, fn func(q *db.Queries) error) (int64, error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	tx, err := s.writeDB.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+
+	if err := fn(s.wq.WithTx(tx)); err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+
+	var id int64
+	if err := tx.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
+		tx.Rollback()
+		return 0, fmt.Errorf("fetch last insert id: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // Q returns the read-only pre-compiled query set.
 func (s *Store) Q() *db.Queries {
 	return s.rq

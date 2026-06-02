@@ -254,6 +254,16 @@ func (e *Engine) runSingle(ctx context.Context, nodeCfg *NodeConfig, input []str
 	}
 	if !def.Available {
 		e.logger.Warn("tool not available, skipping", "tool", toolName, "node", nodeCfg.ID)
+		e.bus.Publish(events.LogMessage{
+			Level:   "warn",
+			Message: fmt.Sprintf("tool %s is not installed or not on PATH; skipping node %s", toolName, nodeCfg.ID),
+			Fields: map[string]string{
+				"tool":   toolName,
+				"binary": def.Binary,
+				"node":   nodeCfg.ID,
+			},
+			Time: time.Now(),
+		})
 		return nil, nil
 	}
 

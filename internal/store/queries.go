@@ -71,8 +71,7 @@ func (s *Store) InsertURL(ctx context.Context, fullURL, source string, domainID 
 
 // InsertFinding inserts a finding and returns its ID.
 func (s *Store) InsertFinding(ctx context.Context, f *db.Finding) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertFinding(ctx, db.InsertFindingParams{
 			DomainID:    f.DomainID,
 			UrlID:       f.UrlID,
@@ -83,10 +82,6 @@ func (s *Store) InsertFinding(ctx context.Context, f *db.Finding) (int64, error)
 			Evidence:    f.Evidence,
 		}); err != nil {
 			return fmt.Errorf("insert finding: %w", err)
-		}
-		// SQLite last_insert_rowid() via the write connection.
-		if err := s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
-			return fmt.Errorf("fetch finding id: %w", err)
 		}
 		return nil
 	})
@@ -140,17 +135,13 @@ func (s *Store) CountFindings(ctx context.Context) (int64, error) {
 
 // InsertScopeRule inserts a scope rule and returns its ID.
 func (s *Store) InsertScopeRule(ctx context.Context, pattern, ruleType string, inScope bool) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertScopeRule(ctx, db.InsertScopeRuleParams{
 			Pattern: pattern,
 			Type:    ruleType,
 			InScope: inScope,
 		}); err != nil {
 			return fmt.Errorf("insert scope rule: %w", err)
-		}
-		if err := s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
-			return fmt.Errorf("fetch scope rule id: %w", err)
 		}
 		return nil
 	})
@@ -223,15 +214,14 @@ func (s *Store) HasInterruptedSession(ctx context.Context) (bool, error) {
 
 // InsertBatch creates a new batch record in 'processing' state and returns its ID.
 func (s *Store) InsertBatch(ctx context.Context, nodeID string, itemCount int) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertBatch(ctx, db.InsertBatchParams{
 			NodeID:    nodeID,
 			ItemCount: int64(itemCount),
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		return nil
 	})
 	return id, err
 }
@@ -248,8 +238,7 @@ func (s *Store) CompleteBatch(ctx context.Context, batchID int64, status string)
 
 // InsertProcess creates a new process record and returns its ID.
 func (s *Store) InsertProcess(ctx context.Context, p *db.Process) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertProcess(ctx, db.InsertProcessParams{
 			Name:       p.Name,
 			Command:    p.Command,
@@ -261,7 +250,7 @@ func (s *Store) InsertProcess(ctx context.Context, p *db.Process) (int64, error)
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		return nil
 	})
 	return id, err
 }
@@ -378,8 +367,7 @@ func (s *Store) UpsertDNSRecord(ctx context.Context, domainID int64, recordType,
 
 // InsertDownloadedFile records a downloaded file and returns its ID.
 func (s *Store) InsertDownloadedFile(ctx context.Context, urlID int64, filePath, fileType string, sizeBytes *int64, sha256 *string) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertDownloadedFile(ctx, db.InsertDownloadedFileParams{
 			UrlID:     urlID,
 			FilePath:  filePath,
@@ -389,7 +377,7 @@ func (s *Store) InsertDownloadedFile(ctx context.Context, urlID int64, filePath,
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		return nil
 	})
 	return id, err
 }
@@ -426,12 +414,11 @@ func (s *Store) GetRunningProcessPIDs(ctx context.Context) ([]int64, error) {
 // ============================================================
 
 func (s *Store) InsertNote(ctx context.Context, content string) (int64, error) {
-	var id int64
-	err := s.WriteTx(ctx, func(q *db.Queries) error {
+	id, err := s.writeTxLastInsertID(ctx, func(q *db.Queries) error {
 		if err := q.InsertNote(ctx, content); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		return nil
 	})
 	return id, err
 }

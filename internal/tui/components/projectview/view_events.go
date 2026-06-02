@@ -1,6 +1,7 @@
 package projectview
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -8,15 +9,19 @@ import (
 
 func (m Model) renderEvents(w, h int) string {
 	var lines []string
-	if len(m.logLines) > h {
-		lines = m.logLines[len(m.logLines)-h:]
-	} else {
-		lines = m.logLines
+	if len(m.logLines) > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText).Bold(true).Render("Recent Events"))
+		lines = append(lines, lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render(strings.Repeat("-", max(1, w-4))))
+		lines = append(lines, m.logLines...)
 	}
 
-	logText := strings.Join(lines, "\n")
-	if logText == "" {
-		logText = lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
+	if len(lines) > h {
+		lines = truncateEventLines(lines, h)
+	}
+
+	content := strings.Join(lines, "\n")
+	if content == "" {
+		content = lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
 			Render("No recent events.")
 	}
 
@@ -35,5 +40,17 @@ func (m Model) renderEvents(w, h int) string {
 			Foreground(m.ctx.Theme.PrimaryText).
 			Background(titleBg).
 			Padding(0, 1).
-			Render("Recent Events") + "\n" + logText)
+			Render("Events") + "\n" + content)
+}
+
+func truncateEventLines(lines []string, maxLines int) []string {
+	if maxLines <= 0 {
+		return nil
+	}
+	if len(lines) <= maxLines {
+		return lines
+	}
+	truncated := append([]string{}, lines[:maxLines]...)
+	truncated[maxLines-1] = fmt.Sprintf("... %d more lines", len(lines)-maxLines+1)
+	return truncated
 }

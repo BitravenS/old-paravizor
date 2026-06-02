@@ -79,7 +79,7 @@ func (m Model) renderStats(w int) string {
 
 	primary := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText)
 	highlight := lipgloss.NewStyle().Foreground(m.ctx.Theme.SuccessText).Bold(true)
-	
+
 	runNodes, doneNodes, errNodes := 0, 0, 0
 	for _, n := range m.nodes {
 		if n.Status == engine.NodeStatusActive || n.Status == engine.NodeStatusDraining {
@@ -106,10 +106,24 @@ func (m Model) renderStats(w int) string {
 		primary.Render("Nodes Done/Err"), highlight.Render(fmt.Sprintf("%d/%d", doneNodes, errNodes)),
 	)
 
+	pipelineName := "n/a"
+	if m.ctx != nil && m.ctx.Pipeline != nil && m.ctx.Pipeline.Name != "" {
+		pipelineName = m.ctx.Pipeline.Name
+	}
+	budget := "n/a"
+	if m.totalBudget > 0 {
+		budget = fmt.Sprintf("%.1f rps", m.totalBudget)
+	}
+	col4 := fmt.Sprintf("%s: %s\n%s: %s",
+		primary.Render("Pipeline"), highlight.Render(pipelineName),
+		primary.Render("Budget"), highlight.Render(budget),
+	)
+
 	content := lipgloss.JoinHorizontal(lipgloss.Top,
-		lipgloss.NewStyle().Width(w/3).Render(col1),
-		lipgloss.NewStyle().Width(w/3).Render(col2),
-		lipgloss.NewStyle().Width(w/3).Render(col3),
+		lipgloss.NewStyle().Width(w/4).Render(col1),
+		lipgloss.NewStyle().Width(w/4).Render(col2),
+		lipgloss.NewStyle().Width(w/4).Render(col3),
+		lipgloss.NewStyle().Width(w/4).Render(col4),
 	)
 
 	title := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText).Background(m.ctx.Theme.SelectedBackground).Padding(0, 1).Render("Dashboard Stats")

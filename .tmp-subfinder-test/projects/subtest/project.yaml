@@ -1,0 +1,9 @@
+project:
+    name: subtest
+    description: New Paravizor project
+    scope:
+        include:
+            - '*.pulgaa.xyz'
+    rate_limit_mode: normal
+    rate_limit: []
+    pipeline: default

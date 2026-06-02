@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/bitravens/paravizor/v1/internal/config"
 	"github.com/bitravens/paravizor/v1/internal/engine"
 	"github.com/bitravens/paravizor/v1/internal/events"
 	proj "github.com/bitravens/paravizor/v1/internal/project"
@@ -34,9 +35,9 @@ type msgEngineEvent struct{ event events.Event }
 type pageState int
 
 const (
-	stateCreate  pageState = iota // new-project form
-	stateProject                  // project view with pipeline nodes + log
-	stateEditScope                // editing in/out of scope
+	stateCreate    pageState = iota // new-project form
+	stateProject                    // project view with pipeline nodes + log
+	stateEditScope                  // editing in/out of scope
 )
 
 // nodeRow is the UI representation of a single pipeline node.
@@ -147,6 +148,10 @@ func (m *Model) loadExistingProject(dir string) {
 		m.formErr = fmt.Errorf("load project: %w", err)
 		return
 	}
+	if err := m.syncProjectContext(dir, &pcfg); err != nil {
+		m.formErr = err
+		return
+	}
 	m.projectDir = dir
 	m.projCfg = &pcfg
 	m.state = stateProject
@@ -154,35 +159,76 @@ func (m *Model) loadExistingProject(dir string) {
 	m.loadMetricsFromStore()
 }
 
+func (m *Model) syncProjectContext(dir string, pcfg *proj.ProjectConfig) error {
+	cfg := config.LoadConfig(dir)
+	m.ctx.Config = &cfg
+	m.ctx.Project = pcfg
+	m.ctx.ProjectDir = dir
+
+	pipelineName := cfg.DefaultPipeline
+	if pcfg != nil && pcfg.Pipeline != "" {
+		pipelineName = pcfg.Pipeline
+	}
+	pipeline, err := engine.LoadExternalPipeline(pipelineName)
+	if err != nil && pipeline == nil {
+		return fmt.Errorf("load pipeline %q: %w", pipelineName, err)
+	}
+	m.ctx.Pipeline = pipeline
+	return nil
+}
+
 // loadMetricsFromStore hydrates the TUI counts from the database on resume.
 func (m *Model) loadMetricsFromStore() {
-	if m.store == nil || m.store.DB() == nil {
+	st, closeStore, err := m.metricsStore()
+	if err != nil {
+		m.appendLog("Metrics unavailable: " + err.Error())
 		return
 	}
+	defer closeStore()
+
 	ctx := gocontext.Background()
 	var count int
 
-	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains").Scan(&count)
+	_ = st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains").Scan(&count)
 	m.domainsCount = count
 
-	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains WHERE source = 'dnsx-live'").Scan(&count)
+	_ = st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM domains WHERE source = 'dnsx-live'").Scan(&count)
 	m.liveCount = count
 
-	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM urls").Scan(&count)
+	_ = st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM urls").Scan(&count)
 	m.urlsCount = count
 
-	_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM findings").Scan(&count)
+	_ = st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM findings").Scan(&count)
 	m.findingsCount = count
 
 	for i, n := range m.nodes {
 		var outCount int
-		_ = m.store.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM pipeline_state WHERE node_id = ? AND status = 'completed'", n.ID).Scan(&outCount)
+		_ = st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM pipeline_state WHERE node_id = ? AND status = 'completed'", n.ID).Scan(&outCount)
 		m.nodes[i].ItemsOut = outCount
-		
+
 		if outCount > 0 {
 			m.nodes[i].Status = engine.NodeStatusCompleted
 		}
 	}
+}
+
+func (m *Model) metricsStore() (*store.Store, func(), error) {
+	if m.store != nil && m.store.DB() != nil {
+		return m.store, func() {}, nil
+	}
+	if m.projectDir == "" {
+		return nil, nil, fmt.Errorf("project directory is not set")
+	}
+
+	dbCfg := store.DBConfig{}
+	if m.ctx != nil && m.ctx.Config != nil && m.ctx.Config.DBConfig != nil {
+		dbCfg = *m.ctx.Config.DBConfig
+	}
+	st, err := store.Open(gocontext.Background(), proj.DBPath(m.projectDir), dbCfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open project database: %w", err)
+	}
+	return st, func() { _ = st.Close() }, nil
 }
 
 // rebuildNodes syncs m.nodes from ctx.Pipeline.Nodes.
@@ -376,7 +422,7 @@ func (m *Model) loadNodeLogs(nodeID string) string {
 	if err != nil || len(entries) == 0 {
 		return "No logs found for node " + nodeID
 	}
-	
+
 	// Just read the latest stderr/stdout
 	var latestFile os.DirEntry
 	for _, e := range entries {
@@ -387,7 +433,7 @@ func (m *Model) loadNodeLogs(nodeID string) string {
 	if latestFile == nil {
 		return "No logs found for node " + nodeID
 	}
-	
+
 	path := filepath.Join(dir, latestFile.Name())
 	content, err := os.ReadFile(path)
 	if err != nil {

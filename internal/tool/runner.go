@@ -142,12 +142,15 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 	if cmd.Process != nil {
 		pid = cmd.Process.Pid
 	}
+	processID := int64(pid)
 
 	r.bus.Publish(events.ProcessStarted{
-		ToolName: def.Name,
-		Command:  fmt.Sprintf("%s %s", def.BinaryPath, strings.Join(args, " ")),
-		PID:      pid,
-		Time:     time.Now(),
+		ProcessID: processID,
+		ToolName:  def.Name,
+		Command:   fmt.Sprintf("%s %s", def.BinaryPath, strings.Join(args, " ")),
+		PID:       pid,
+		NodeID:    nodeID,
+		Time:      time.Now(),
 	})
 
 	// Feed stdin in a goroutine so it doesn't block the main execution path.
@@ -172,9 +175,11 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 			stderrBuf.WriteString(line)
 			stderrBuf.WriteByte('\n')
 			r.bus.Publish(events.ProcessOutput{
-				Stream: "stderr",
-				Line:   line,
-				Time:   time.Now(),
+				ProcessID: processID,
+				NodeID:    nodeID,
+				Stream:    "stderr",
+				Line:      line,
+				Time:      time.Now(),
 			})
 		}
 	}()
@@ -198,10 +203,13 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 	}
 
 	r.bus.Publish(events.ProcessCompleted{
-		ToolName: def.Name,
-		ExitCode: result.ExitCode,
-		Duration: result.Duration,
-		Time:     time.Now(),
+		ProcessID: processID,
+		ToolName:  def.Name,
+		ExitCode:  result.ExitCode,
+		Duration:  result.Duration,
+		PID:       pid,
+		NodeID:    nodeID,
+		Time:      time.Now(),
 	})
 
 	// Parse output into items if the tool declares a produces type.

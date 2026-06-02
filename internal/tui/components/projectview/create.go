@@ -133,6 +133,10 @@ func (m *Model) submitCreate() tea.Cmd {
 
 	m.projectDir = dir
 	m.projCfg = cfg
+	if err := m.syncProjectContext(dir, cfg); err != nil {
+		m.formErr = err
+		return nil
+	}
 	m.formErr = nil
 	m.state = stateProject
 	m.rebuildNodes()
