@@ -10,3 +10,8 @@ type AIConfig struct {
 	BaseURL     string `yaml:"base_url" validate:"omitempty,url"`
 	ConsentMode string `yaml:"consent_mode" validate:"omitempty,oneof=always_ask auto_approve"`
 }
+
+type ChatMessage struct {
+	Role    string
+	Content string
+}

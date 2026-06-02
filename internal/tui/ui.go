@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/log/v2"
 	"github.com/bitravens/paravizor/v1/internal/config"
+	"github.com/bitravens/paravizor/v1/internal/engine"
 	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/bitravens/paravizor/v1/internal/store"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/footer"
@@ -203,6 +204,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.Ctx.ProjectDir = dir
 					if p, err := project.LoadProject(dir); err == nil {
 						m.Ctx.Project = &p
+						m.refreshPipelineForProject(&p)
 					}
 				}
 			}
@@ -301,12 +303,28 @@ func (m Model) openProjectPath(path string, cmds *[]tea.Cmd) (tea.Model, tea.Cmd
 
 	m.Ctx.ProjectDir = absPath
 	m.Ctx.Project = &p
+	m.refreshPipelineForProject(&p)
 	m.addRecentProject(absPath)
 	m.projectView = projectview.NewModel(m.Ctx, absPath, m.store)
 	m.state = ViewStateProject
 	m.showFooter = true
 	m.recalculateLayout()
 	return m, tea.Batch(append(*cmds, m.projectView.Init())...)
+}
+
+func (m *Model) refreshPipelineForProject(p *project.ProjectConfig) {
+	if m.Ctx == nil || m.Ctx.Config == nil {
+		return
+	}
+	pipelineName := m.Ctx.Config.DefaultPipeline
+	if p != nil && p.Pipeline != "" {
+		pipelineName = p.Pipeline
+	}
+	if pipeline, err := engine.LoadExternalPipeline(pipelineName); pipeline != nil {
+		m.Ctx.Pipeline = pipeline
+	} else {
+		log.Warn("failed to refresh project pipeline", "pipeline", pipelineName, "err", err)
+	}
 }
 
 func (m *Model) addRecentProject(dir string) {

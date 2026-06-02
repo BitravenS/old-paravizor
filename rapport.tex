@@ -1,0 +1,931 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{ifthen}
+\usepackage{amsmath}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+\onehalfspacing
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue,
+    citecolor=black
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Professional Personal Project}
+\rhead{Paravizor}
+\cfoot{\thepage}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+\setlist[itemize]{leftmargin=1.2cm}
+\setlist[enumerate]{leftmargin=1.2cm}
+\graphicspath{{figures/}{images/}{./}}
+
+\newcommand{\projectfigure}[4][0.9\textwidth]{%
+    \begin{figure}[H]
+        \centering
+        \IfFileExists{figures/#2}{%
+            \includegraphics[width=#1]{figures/#2}%
+        }{%
+            \IfFileExists{images/#2}{%
+                \includegraphics[width=#1]{images/#2}%
+            }{%
+                \fbox{%
+                    \parbox[c][6cm][c]{0.88\textwidth}{%
+                        \centering
+                        \textbf{Figure placeholder}\\[0.3cm]
+                        Add the image file as:\\
+                        \texttt{figures/#2}\\[0.4cm]
+                        \small This placeholder is automatically replaced when the file exists.
+                    }%
+                }%
+            }%
+        }%
+        \caption{#3}
+        \label{#4}
+    \end{figure}
+}
+
+\lstdefinestyle{yamlstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    backgroundcolor=\color{gray!8}
+}
+
+\lstdefinestyle{bashstyle}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    backgroundcolor=\color{blue!4}
+}
+
+\begin{document}
+
+\pagenumbering{gobble}
+
+\begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \begin{minipage}{0.2\textwidth}
+        \centering
+        \IfFileExists{images.jpg}
+        {\includegraphics[width=0.8\textwidth]{images.jpg}}
+        {\fbox{\parbox[c][2.2cm][c]{0.8\textwidth}{\centering INSAT}}}
+    \end{minipage}
+    \begin{minipage}{0.55\textwidth}
+        \centering
+        \textbf{TUNISIAN REPUBLIC} \\
+        Ministry of Higher Education and Scientific Research \\
+        University of Carthage \\
+        \textbf{National Institute of Applied Sciences and Technology}
+    \end{minipage}
+    \begin{minipage}{0.2\textwidth}
+        \centering
+        \IfFileExists{uc.png}
+        {\includegraphics[width=0.8\textwidth]{uc.png}}
+        {\fbox{\parbox[c][2.2cm][c]{0.8\textwidth}{\centering UCAR}}}
+    \end{minipage}
+
+    \vspace{4cm}
+
+    {\LARGE \textbf{Professional Personal Project}} \\
+    \vspace{0.5cm}
+    {Completed as part of the 3\textsuperscript{rd} year in Software Engineering at INSAT}
+
+    \vspace{1.5cm}
+    \rule{\textwidth}{0.4pt}
+    \vspace{0.3cm}
+    {\Large \textbf{Paravizor}}\\
+    \vspace{0.2cm}
+    {\large \textbf{Terminal-Native Reconnaissance Orchestration and AI Assistance Platform}}
+    \vspace{0.3cm}
+    \rule{\textwidth}{0.4pt}
+
+    \vspace{2cm}
+
+    {Presented by:} \\
+    \textbf{Haddadi Med Aziz} \\
+    \textbf{Tabbabi Malek} \\
+    \textbf{Djebbi Med Nadhir} \\
+    \textbf{Benhadj Slimene Fares}\\
+    \textbf{Dhibbi Med Amine}
+
+    \vspace{1.5cm}
+
+    {Supervised by:} \\
+    \textbf{Hajer Taktak}
+
+    \vfill
+
+    {Academic Year: 2025 / 2026}
+\end{titlepage}
+
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\phantomsection
+\section*{Abstract}
+\addcontentsline{toc}{section}{Abstract}
+
+Paravizor is a terminal-first reconnaissance orchestration platform designed for authorized bug bounty research, penetration testing preparation, and application security asset discovery. The project addresses a common operational problem: modern reconnaissance depends on many external command-line tools, each with its own input format, output format, runtime behavior, and failure modes. Without orchestration, the researcher must manually chain commands, manage files, deduplicate results, preserve scope boundaries, and remember which tool produced each signal.
+
+The implemented solution is a Go application that organizes reconnaissance into local projects. Each project contains a YAML configuration file, a SQLite database, logs, and optional exports. The reconnaissance workflow is modeled as a directed acyclic graph made of stages and nodes. Nodes consume and produce typed items such as domains, URLs, IP addresses, ports, findings, DNS records, technologies, and downloaded files. External tools are described using YAML definitions, checked for local availability, executed by a controlled process runner, and parsed into normalized database records. The runtime supports recovery of interrupted processing states, optional installation of missing tools, process limits, node timeouts, event streaming, rate allocation, and scope-aware routing.
+
+Paravizor also provides a terminal user interface for project creation, project browsing, live pipeline monitoring, scrollable logs, active process inspection, and an independent local AI assistant window. The AI assistant uses Ollama and consumes all available recon evidence from the project database, process history, pipeline state, source coverage, notes, and bounded tool logs. It can generate an analysis report and answer follow-up questions while keeping the user in control.
+
+The current version satisfies the main requirements of the project cahier des charges: configurable projects, pipelines and tools; terminal-based campaign steering; resilient local storage; export mechanisms; and AI-assisted decision support. This report presents the context, requirements, architecture, implementation, testing strategy, limitations, and roadmap of Paravizor.
+
+\clearpage
+\phantomsection
+\tableofcontents
+
+\clearpage
+\phantomsection
+\addcontentsline{toc}{section}{List of Tables}
+\listoftables
+
+\clearpage
+\phantomsection
+\section*{List of Acronyms}
+\addcontentsline{toc}{section}{List of Acronyms}
+
+\begin{longtable}{>{\bfseries}p{3cm}p{11cm}}
+AI & Artificial Intelligence \\
+API & Application Programming Interface \\
+AppSec & Application Security \\
+CLI & Command-Line Interface \\
+DAG & Directed Acyclic Graph \\
+DB & Database \\
+DNS & Domain Name System \\
+HTTP & Hypertext Transfer Protocol \\
+INSAT & National Institute of Applied Sciences and Technology \\
+OSINT & Open-Source Intelligence \\
+PPP & Professional Personal Project \\
+SQL & Structured Query Language \\
+TUI & Terminal User Interface \\
+URL & Uniform Resource Locator \\
+XDG & Cross-Desktop Group directory specification \\
+YAML & YAML Ain't Markup Language \\
+\end{longtable}
+
+\clearpage
+\phantomsection
+\section*{General Introduction}
+\addcontentsline{toc}{section}{General Introduction}
+
+Reconnaissance is a decisive phase in offensive security. Before a vulnerability can be validated, a researcher must understand the public attack surface of a target: domains, subdomains, live hosts, URLs, parameters, technologies, DNS records, IP addresses, open ports, static files, and weak indicators. In real bug bounty work, this process rarely depends on one tool. It requires a chain of utilities such as \texttt{subfinder}, \texttt{amass}, \texttt{dnsx}, \texttt{httpx}, \texttt{katana}, \texttt{gau}, \texttt{nuclei}, \texttt{nmap}, and other specialized tools.
+
+This multi-tool reality creates friction. Outputs are heterogeneous, some tools require API keys, some tools may hang or fail, and results are often stored in temporary files. When a campaign is interrupted, the user may not know which assets have already been processed. When the dataset grows, prioritization becomes difficult. Paravizor was created to reduce this operational noise while preserving the speed and flexibility of the terminal.
+
+The main idea of Paravizor is to transform reconnaissance from a fragile collection of commands into a structured, reproducible, and inspectable workflow. The user defines a project and a scope, selects a pipeline, checks available tools, runs the campaign, observes execution in the TUI or CLI, exports useful artifacts, and uses a local AI assistant for synthesis and prioritization.
+
+This report follows the project from requirements to implementation. It is aligned with the current cahier des charges, which defines Paravizor as a controllable, traceable, and evolvable reconnaissance copilot.
+
+\newpage
+
+\section{General Context and Requirements}
+
+\subsection{Project Context}
+
+Paravizor is developed as a professional personal project in software engineering and cybersecurity tooling. It targets authorized offensive security workflows, especially bug bounty reconnaissance and penetration testing preparation. The application is local-first: configuration, project databases, logs, exports, and AI prompts remain on the user's machine. This is important because reconnaissance data may include sensitive information about organizations, internal notes, and scope definitions.
+
+The product vision is not to replace the researcher. Instead, Paravizor acts as an orchestration and decision-support layer. It manages repetitive execution, data normalization, traceability, and summarization while the user keeps control over scope, actions, validation, and reporting.
+
+\subsection{Problem Statement}
+
+A typical reconnaissance campaign includes the following tasks:
+
+\begin{itemize}
+    \item Define in-scope and out-of-scope assets.
+    \item Discover subdomains through passive and active techniques.
+    \item Resolve hosts and identify live assets.
+    \item Probe HTTP services and detect technologies.
+    \item Crawl websites and collect historical URLs.
+    \item Identify interesting parameters, paths, files, and weak signals.
+    \item Scan selected surfaces for known vulnerabilities or misconfigurations.
+    \item Export artifacts for manual validation and final reporting.
+\end{itemize}
+
+When executed manually, these tasks create several problems:
+
+\begin{itemize}
+    \item Fragile chains of shell scripts and temporary files.
+    \item Heterogeneous output formats.
+    \item Difficulty resuming interrupted campaigns.
+    \item Loss of context between pipeline steps.
+    \item Weak traceability between results and source tools.
+    \item Inconsistent scope enforcement.
+    \item Cognitive overload during triage and prioritization.
+\end{itemize}
+
+\subsection{Product Vision}
+
+The cahier des charges defines Paravizor as a complete reconnaissance copilot built around five goals:
+
+\begin{enumerate}
+    \item Transform manual reconnaissance into a structured and reproducible process.
+    \item Centralize discovery, triage, and prioritization data.
+    \item Reduce operational noise so the user focuses on high-value targets.
+    \item Combine external tool orchestration with local AI assistance.
+    \item Offer a terminal-native experience without sacrificing depth of analysis.
+\end{enumerate}
+
+Three principles guide the design:
+
+\begin{itemize}
+    \item \textbf{Controllability}: the user stays responsible for decisions.
+    \item \textbf{Traceability}: each result keeps its origin and execution context.
+    \item \textbf{Evolvability}: pipelines and tool definitions can evolve without rewriting the engine.
+\end{itemize}
+
+\subsection{Actors}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X}
+        \toprule
+        Actor & Description \\
+        \midrule
+        Security Researcher & Main user who creates projects, defines scope, launches recon pipelines, and analyzes results. \\
+        Pentester & Uses Paravizor to prepare and standardize authorized assessment reconnaissance. \\
+        AppSec Team Member & Uses shared pipelines and exports to improve attack surface visibility. \\
+        External Tool & A local command-line binary integrated through a YAML tool definition. \\
+        Local AI Assistant & Ollama-backed assistant that summarizes and questions project evidence. \\
+        System & The Paravizor application: CLI, TUI, runtime, engine, store, and tool runner. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Project actors}
+    \label{tab:actors}
+\end{table}
+
+\subsection{Functional Requirements}
+
+\begin{longtable}{>{\bfseries}p{2.2cm}p{10.2cm}p{2.2cm}}
+    \toprule
+    ID & Requirement & Status \\
+    \midrule
+    FR1 & Create, load, resume, and organize reconnaissance projects. & Done \\
+    FR2 & Define in-scope and out-of-scope targets per project. & Done \\
+    FR3 & Bootstrap global configuration, theme, default tools, and default pipeline files. & Done \\
+    FR4 & Describe pipelines as modular stages and routed nodes. & Done \\
+    FR5 & Validate pipeline DAG structure, routes, stages, item types, and configured tools. & Done \\
+    FR6 & Describe external tools in YAML with input, output, flags, install hints, and item types. & Done \\
+    FR7 & Check available tools before execution and skip missing tools by default. & Done \\
+    FR8 & Optionally install supported missing tools when explicitly requested. & Done \\
+    FR9 & Execute pipelines from the TUI and CLI. & Done \\
+    FR10 & Store normalized recon artifacts, pipeline states, process history, and notes in SQLite. & Done \\
+    FR11 & Resume interrupted work by resetting stuck processing states. & Done \\
+    FR12 & Display live execution, active processes, logs, metrics, and node details in the TUI. & Done \\
+    FR13 & Export recon artifacts and Markdown reports. & Done \\
+    FR14 & Provide read-only SQL queries over a project database. & Done \\
+    FR15 & Provide local AI analysis and follow-up chat over project evidence. & Done \\
+    FR16 & Support every possible third-party tool output with perfect semantic parsing. & Ongoing \\
+    \bottomrule
+    \caption{Functional requirements and current status}
+    \label{tab:functional-requirements}
+\end{longtable}
+
+\subsection{Non-Functional Requirements}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{3cm}X}
+        \toprule
+        Requirement & Implementation Response \\
+        \midrule
+        Robustness & SQLite WAL configuration, serialized writes, interrupted state recovery, node timeouts, and process group termination. \\
+        Traceability & Stored source names, node identifiers, pipeline state, process history, stdout and stderr logs. \\
+        Extensibility & YAML-based projects, pipelines, tools, and themes. \\
+        Usability & Bubble Tea TUI with dashboard, scrollable panels, independent AI window, project creation, and keyboard shortcuts. \\
+        Performance & Go concurrency, process limits, batched node handling, rate allocation, and local SQLite persistence. \\
+        Security & Local-first data storage, scope filters, read-only query command, explicit optional installation, and AI safety prompt constraints. \\
+        Maintainability & Modular packages, tests for project, config, engine, runtime, tool runner, store, AI, CLI, and TUI behavior. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Non-functional requirements}
+    \label{tab:non-functional-requirements}
+\end{table}
+
+\subsection{Use Case Overview}
+
+\projectfigure{use_case_diagram.png}{General use case diagram}{fig:use-case}
+
+The main use cases are: initialize a project, configure scope, check tools, run or resume a pipeline, inspect live execution, open logs, export artifacts, query the database, generate an AI analysis, and ask AI follow-up questions.
+
+\subsection{Requirement Traceability}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X}
+        \toprule
+        Cahier des charges axis & Paravizor implementation \\
+        \midrule
+        Project management & \texttt{internal/project}, \texttt{paravizor init}, project YAML, per-project SQLite DB. \\
+        Pipeline orchestration & \texttt{internal/engine}, default DAG, routed nodes, item types, batch settings. \\
+        Reliability and resume & \texttt{runtime.RunPipeline}, \texttt{ResetProcessingItems}, process manager, node timeout handling. \\
+        Result exploitation & SQLite schema, \texttt{export artifacts}, \texttt{export report}, \texttt{query}. \\
+        TUI experience & Bubble Tea home, create, project dashboard, logs, active processes, AI window. \\
+        AI assistance & Ollama project analysis, full evidence summary, chat prompt, generated report file. \\
+        User control & Installed-only default execution, explicit \texttt{--install}, scope filtering, local data storage. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Traceability between requirements and implementation}
+    \label{tab:traceability}
+\end{table}
+
+\newpage
+
+\section{Design and Architecture}
+
+\subsection{Architectural Overview}
+
+Paravizor follows a modular architecture. The CLI and TUI are entry points. They delegate execution to a runtime layer. The runtime loads configuration, checks tools, opens the store, creates the event bus, builds the DAG, seeds scope inputs, configures rate limiting and process management, and starts the engine. The engine executes pipeline nodes, calls the tool runner, stores normalized items, and routes results to downstream nodes. The store persists data in SQLite. The AI module reads the same project database and logs to build contextual prompts.
+
+\projectfigure{logical_architecture.png}{Logical architecture of Paravizor}{fig:logical-architecture}
+
+\begin{center}
+\texttt{CLI/TUI -> Runtime -> Engine -> Tool Runner -> External Tools -> Store -> Events -> TUI/AI/Exports}
+\end{center}
+
+\subsection{Package Organization}
+
+\begin{longtable}{>{\bfseries}p{4cm}p{10cm}}
+    \toprule
+    Package & Responsibility \\
+    \midrule
+    \texttt{cmd/paravizor} & Application entry point. \\
+    \texttt{internal/cli} & Cobra commands: init, run, tools, query, export. \\
+    \texttt{internal/tui} & Terminal interface shell and components. \\
+    \texttt{internal/tui/components/projectview} & Project dashboard, run view, logs, AI assistant, chat, scope editing. \\
+    \texttt{internal/runtime} & End-to-end pipeline execution composition. \\
+    \texttt{internal/engine} & DAG model, validation, scheduling, routing, storage of produced items. \\
+    \texttt{internal/tool} & Tool YAML parsing, registry, availability checks, installation hints, process runner. \\
+    \texttt{internal/store} & SQLite opening, migrations, queries, serialized writes. \\
+    \texttt{internal/store/db} & Generated and custom database query layer. \\
+    \texttt{internal/items} & Normalized recon item types. \\
+    \texttt{internal/events} & Event definitions and bus. \\
+    \texttt{internal/ai} & Ollama configuration, project evidence extraction, analysis and chat prompts. \\
+    \texttt{internal/ratelimit} & Credit pool and adaptive rate allocation foundations. \\
+    \texttt{internal/config}, \texttt{internal/project}, \texttt{internal/theme} & Configuration, project files, and theme loading. \\
+    \bottomrule
+    \caption{Main package responsibilities}
+    \label{tab:packages}
+\end{longtable}
+
+\subsection{Technology Stack}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X}
+        \toprule
+        Technology & Usage \\
+        \midrule
+        Go 1.26.1 & Main implementation language, concurrency, static binary, strong standard library. \\
+        Cobra and Fang & CLI command model and terminal command presentation. \\
+        Bubble Tea v2 & TUI architecture and update loop. \\
+        Bubbles v2 & Text inputs and reusable TUI widgets. \\
+        Lip Gloss v2 & Terminal styling and layout. \\
+        SQLite / modernc SQLite & Local project database without external DB server. \\
+        sqlc & Typed database query generation. \\
+        Koanf & Configuration loading and merging. \\
+        YAML & Project, pipeline, tool, theme, and configuration files. \\
+        Ollama & Local AI backend for analysis and chat. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Technology stack}
+    \label{tab:technology-stack}
+\end{table}
+
+\subsection{Data Model}
+
+The database is project-local and stored as \texttt{paravizor.db}. It captures both recon results and runtime state. Important tables include:
+
+\begin{itemize}
+    \item \texttt{domains}: discovered domains, source, liveness, IP, timestamps.
+    \item \texttt{urls}: discovered URLs, status code, content type, path, query string, source.
+    \item \texttt{ips} and \texttt{ports}: network exposure data.
+    \item \texttt{techstack}: technology detections per domain.
+    \item \texttt{dns\_records}: DNS records linked to domains.
+    \item \texttt{url\_flags}: triage flags for URLs and parameters.
+    \item \texttt{downloaded\_files}: captured static files and metadata.
+    \item \texttt{findings}: scanner findings with severity, evidence, and source scanner.
+    \item \texttt{pipeline\_state}: item status per node for resume and progress tracking.
+    \item \texttt{processes}: process execution history and command metadata.
+    \item \texttt{batches}, \texttt{scope\_rules}, and \texttt{notes}: operational metadata.
+\end{itemize}
+
+\projectfigure{database_schema.png}{Database schema of project-local recon data}{fig:database-schema}
+
+\subsection{Pipeline Model}
+
+Pipelines are defined as YAML and represented internally as a directed acyclic graph. Each node has an identifier, stage, tool, consumed item type, produced item type, batch policy, and routes. Routes can fan out results to multiple downstream nodes, and condition expressions can be used for selective routing.
+
+\begin{lstlisting}[style=yamlstyle,caption={Simplified pipeline node example}]
+pipeline:
+  name: default
+  nodes:
+    - id: dnsx-live
+      name: Live Host Filter (dnsx)
+      stage: 1
+      tool: dnsx-live
+      consumes: domain
+      produces: domain
+      batch:
+        size: 500
+        timeout: 5m
+        wait_for_peers: true
+      routes:
+        - to: screenshot
+        - to: port-scan-resolve
+        - to: tech-httpx
+        - to: url-crawl-katana
+\end{lstlisting}
+
+The default pipeline contains six stages:
+
+\begin{enumerate}
+    \item Subdomain Enumeration.
+    \item Fingerprinting.
+    \item URL Extraction.
+    \item Attack Surface Triage.
+    \item Static File Extraction.
+    \item Vulnerability Scanning.
+\end{enumerate}
+
+\projectfigure{pipeline_dag.png}{Default reconnaissance pipeline DAG}{fig:pipeline-dag}
+
+\subsection{Tool Model}
+
+External tools are described independently from the engine. A tool definition contains binary name, version command, install hint, input mode, output parser, flags, environment variables, rate limit flags, and consumed/produced item types. This avoids hardcoding tool behavior in the scheduler.
+
+\begin{lstlisting}[style=yamlstyle,caption={Simplified tool definition example}]
+tool:
+  name: subfinder
+  binary: subfinder
+  description: Passive subdomain enumeration
+  install: github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+  input:
+    type: arg
+    flag: -d
+  output:
+    type: stdout
+    format: regex
+    pattern: '^(?P<name>\S+)'
+    fields:
+      name: name
+  flags:
+    - -silent
+  consumes: domain
+  produces: domain
+\end{lstlisting}
+
+\subsection{Event-Driven Interface}
+
+The runtime and engine publish events such as pipeline start, node start, node completion, process output, process completion, findings, logs, and rate limit changes. The CLI prints selected events to the terminal. The TUI consumes the same events to update dashboard metrics, node statuses, active process lists, logs, and notifications.
+
+\subsection{Security and Scope Control}
+
+The system is designed for authorized scopes. Scope inputs are normalized so exact domains such as \texttt{example.com} can seed both exact live checking and passive subdomain enumeration without requiring the user to manually write \texttt{*.example.com}. Wildcard forms such as \texttt{*.example.com} and \texttt{*example.com} are normalized safely. Produced items are checked against include and exclude rules before being routed further.
+
+\newpage
+
+\section{Implementation}
+
+\subsection{Configuration and Bootstrap}
+
+At startup, Paravizor creates its global environment under the XDG configuration directory. The bootstrap layer writes default configuration, default theme, default pipeline, and default tool definitions if they are missing. This makes the application operable with minimal manual setup.
+
+\begin{lstlisting}[style=bashstyle,caption={Basic usage}]
+make build
+./paravizor init example -i example.com,*.example.com
+./paravizor run --dir ./example
+\end{lstlisting}
+
+The global configuration includes theme selection, default pipeline name, maximum process count, health check interval, database options, log level, API keys, and AI configuration.
+
+\subsection{Project Creation}
+
+A project is a dedicated directory containing at least:
+
+\begin{itemize}
+    \item \texttt{project.yaml}: project name, scope, pipeline, and rate limit configuration.
+    \item \texttt{paravizor.db}: SQLite database initialized with the full schema.
+    \item \texttt{logs/}: tool stdout and stderr files created during execution.
+    \item \texttt{exports/}: generated artifacts or reports.
+    \item \texttt{ai-analysis.md}: generated AI analysis when requested.
+\end{itemize}
+
+\begin{lstlisting}[style=yamlstyle,caption={Project file example}]
+project:
+  name: example
+  scope:
+    include:
+      - example.com
+      - '*.example.com'
+    exclude:
+      - dev.example.com
+  rate_limit_mode: normal
+  pipeline: default
+\end{lstlisting}
+
+\projectfigure{project_creation.png}{Project creation workflow}{fig:project-creation}
+
+\subsection{Runtime Execution}
+
+The runtime layer is the composition root for a campaign. It performs the following sequence:
+
+\begin{enumerate}
+    \item Load project configuration and selected pipeline.
+    \item Open the project database with the configured SQLite settings.
+    \item Create the event bus and subscribe the TUI or CLI event channel.
+    \item Load tool definitions from the configuration directory.
+    \item Check tool availability on the local machine.
+    \item Optionally install missing tools only when explicitly requested.
+    \item Validate pipeline-tool compatibility.
+    \item Build the DAG.
+    \item Reset interrupted \texttt{processing} items to \texttt{pending}.
+    \item Seed root pipeline items from project scope.
+    \item Start process manager, rate limiter, runner, and engine.
+\end{enumerate}
+
+Missing tools do not block the whole campaign by default. They are reported and skipped, which matches the practical need to run only with tools installed on the user's machine. Installation requires explicit user action through \texttt{--install} or \texttt{tools check --install}.
+
+\subsection{Engine Scheduler and Routing}
+
+The engine builds a DAG from the pipeline and launches nodes when their upstream dependencies are satisfied. Nodes can run in parallel when the DAG allows it. Each node repeatedly pulls pending items from \texttt{pipeline\_state}, marks them as processing, resolves database rows into tool input strings, runs the external tool, parses output into typed items, marks input items completed, stores output items, and enqueues them for downstream routes.
+
+The engine supports:
+
+\begin{itemize}
+    \item Parallel scheduling based on DAG readiness.
+    \item Wait-for-peers batch behavior for aggregation nodes.
+    \item Node-level timeout application.
+    \item Scope filtering before downstream routing.
+    \item Conditional routing expressions.
+    \item Event publication for TUI and CLI monitoring.
+\end{itemize}
+
+\projectfigure{sequence_pipeline_run.png}{Pipeline execution sequence}{fig:sequence-pipeline-run}
+
+\subsection{Tool Runner and Process Safety}
+
+The tool runner executes external binaries using the configured input and output model. It supports argument input, stdin input, temporary file input, stdout parsing, stderr streaming, environment variables, per-tool flags, and saved logs. Each process publishes start, output, and completion events.
+
+A significant implementation detail is process cleanup. Some tools spawn child processes or can hang. The runner starts each process in its own process group and kills the process group when the context deadline is reached. This prevents a pipeline node from remaining active indefinitely when a tool such as \texttt{amass} does not exit. The default passive Amass node is bounded with a two-minute timeout.
+
+\subsection{Storage Layer}
+
+The store opens separate read and write SQLite connections. Writes are serialized through a mutex and transaction helper to avoid concurrent write conflicts. The database is configured with WAL mode, busy timeout, foreign keys, normal synchronous mode, memory temp store, cache sizing, and mmap sizing. This keeps local execution robust while remaining simple to deploy.
+
+\subsection{Rate Limiting and Process Management}
+
+The runtime builds a credit pool when the project uses normal rate limit mode and declares a budget. The pool allocates execution credits over DAG nodes and publishes rebalancing events. The process manager enforces a maximum number of concurrent external processes and performs health checks. This provides a foundation for controlled long-running campaigns.
+
+\subsection{Command-Line Interface}
+
+Paravizor offers both interactive and headless workflows. The implemented commands include:
+
+\begin{itemize}
+    \item \texttt{paravizor init}: create a project with scope and pipeline settings.
+    \item \texttt{paravizor run --dir <project>}: run or resume a recon pipeline.
+    \item \texttt{paravizor run --dir <project> --install}: optionally install missing supported tools before execution.
+    \item \texttt{paravizor tools list}: show configured tools and local availability.
+    \item \texttt{paravizor tools check --install}: check tools and optionally install supported missing binaries.
+    \item \texttt{paravizor tools show <name>}: display one tool definition and availability status.
+    \item \texttt{paravizor query --dir <project> "SELECT ..."}: run read-only SQL queries against project data.
+    \item \texttt{paravizor export artifacts}: export subdomains, live domains, URLs, IPs, ports, and findings as text files.
+    \item \texttt{paravizor export report}: generate a Markdown recon report.
+    \item \texttt{paravizor export obsidian}: generate an Obsidian-friendly Markdown note.
+\end{itemize}
+
+\subsection{Terminal User Interface}
+
+Running \texttt{paravizor} without arguments opens the TUI. The interface is built with Bubble Tea and Lip Gloss. It includes:
+
+\begin{itemize}
+    \item Home screen for project actions.
+    \item Project creation form.
+    \item Project dashboard with metrics.
+    \item Pipeline node panel.
+    \item Recent events and logs panel.
+    \item Active processes panel.
+    \item Scrollable node log modal.
+    \item Scope editing view.
+    \item Independent AI assistant window.
+\end{itemize}
+
+The current project view supports long-running sessions by making the pipeline panel, log panel, node log modal, and AI window scrollable. The user switches between the running window and the AI assistant using \texttt{ctrl+a}. In the running window, \texttt{r} starts the pipeline. In the AI window, \texttt{r} starts the analysis after the pipeline has finished and no nodes are running. The AI response is preserved when switching back to the running window.
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X}
+        \toprule
+        Shortcut & Behavior \\
+        \midrule
+        \texttt{r} in running window & Start or resume the pipeline. \\
+        \texttt{r} in AI window & Generate AI analysis when the run is finished. \\
+        \texttt{c} in AI window & Focus the chat input to ask a recon question. \\
+        \texttt{ctrl+a} & Switch between running window and AI assistant window. \\
+        \texttt{tab} / \texttt{shift+tab} & Switch between pipeline, events, and processes panels. \\
+        \texttt{enter} & Open selected node or process logs. \\
+        \texttt{up/down}, \texttt{pgup/pgdn}, \texttt{home/end} & Scroll active panel, modal, or AI response. \\
+        \texttt{esc} & Back, stop run, blur chat input, or close modal depending on context. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Main TUI shortcuts}
+    \label{tab:tui-shortcuts}
+\end{table}
+
+\projectfigure{tui_project_dashboard.png}{Project dashboard with pipeline, logs, and processes}{fig:tui-project-dashboard}
+
+\subsection{AI Assistant}
+
+The AI assistant is local-first and uses Ollama by default. The default configuration is:
+
+\begin{itemize}
+    \item Provider: \texttt{ollama}.
+    \item Model: \texttt{llama3.1:8b-instruct-q4\_K\_M}.
+    \item Base URL: \texttt{http://localhost:11434}.
+\end{itemize}
+
+Before using AI, the user must run:
+
+\begin{lstlisting}[style=bashstyle,caption={Ollama setup}]
+ollama serve
+ollama pull llama3.1:8b-instruct-q4_K_M
+\end{lstlisting}
+
+The AI module builds a project evidence pack from:
+
+\begin{itemize}
+    \item project scope and metadata;
+    \item counts for domains, live domains, URLs, IPs, ports, findings, notes, and pipeline states;
+    \item sampled domains, live domains, URLs, technologies, DNS records, URL flags, files, ports, and findings;
+    \item source coverage by tool or scanner;
+    \item process history and pipeline state;
+    \item bounded stdout and stderr log highlights;
+    \item operator notes and previous chat history.
+\end{itemize}
+
+The generated analysis is saved to \texttt{ai-analysis.md}. The prompt instructs the model to produce a concise command brief with evidence references, signal board, priority queue, report candidates, next recon plan, and operator notes. The chat mode lets the user ask follow-up questions about the same project evidence. Both analysis and chat use a five-minute request timeout to avoid indefinite UI blocking.
+
+\projectfigure{ai_assistant_window.png}{Independent AI assistant window}{fig:ai-assistant-window}
+
+\newpage
+
+\section{Validation and Testing}
+
+\subsection{Testing Strategy}
+
+The project includes unit and integration tests across core packages. The current test suite verifies:
+
+\begin{itemize}
+    \item configuration defaults and project overrides;
+    \item project name validation and project database migration;
+    \item CLI initialization, run, and command behavior;
+    \item pipeline loader, validator, DAG construction, and cycle rejection;
+    \item runtime scope normalization and wildcard handling;
+    \item store write behavior and row ID retrieval;
+    \item tool runner timeout and process group kill behavior;
+    \item AI project summary coverage and prompt structure;
+    \item TUI update behavior and project view AI/running window switching.
+\end{itemize}
+
+\subsection{Validation Commands}
+
+The full Go test suite was executed successfully:
+
+\begin{lstlisting}[style=bashstyle,caption={Validation command}]
+go test ./...
+\end{lstlisting}
+
+The local build process is:
+
+\begin{lstlisting}[style=bashstyle,caption={Build command}]
+go build -buildvcs=false -o paravizor ./cmd/paravizor
+\end{lstlisting}
+
+\subsection{Observed Quality Improvements}
+
+During refinement, several practical issues were addressed:
+
+\begin{itemize}
+    \item Tool availability is checked before execution.
+    \item Missing tools are skipped by default instead of forcing every tool in the default pipeline.
+    \item Optional installation is explicit through CLI flags.
+    \item Exact domains seed passive subdomain enumeration without requiring the user to write a wildcard target.
+    \item Malformed wildcard forms such as \texttt{*example.com} are normalized safely.
+    \item Running pipeline nodes and logs are scrollable.
+    \item AI response is scrollable and persistent across window switches.
+    \item External tools are killed by process group when the node context expires.
+    \item Interrupted \texttt{processing} rows are reset on the next run.
+\end{itemize}
+
+\subsection{Requirement Coverage}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X>{\raggedright\arraybackslash}p{2.5cm}}
+        \toprule
+        Domain & Evidence & Coverage \\
+        \midrule
+        Project management & Project YAML, init command, TUI creation, per-project DB. & High \\
+        Pipeline orchestration & DAG model, validation, runtime, engine, events, runner. & High \\
+        Tool integration & YAML registry, defaults, availability check, install hints, parsers. & High \\
+        Reliability & WAL DB, reset processing, process group kill, node timeout, tests. & High \\
+        TUI operation & Dashboard, scrollable panels, logs, active processes, AI window. & High \\
+        CLI operation & run, tools, query, export. & High \\
+        AI support & Analysis and chat over project evidence using Ollama. & High \\
+        Deep semantic parsing for every external tool & Depends on each tool output and parser mapping. & Medium \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Requirement coverage summary}
+    \label{tab:coverage}
+\end{table}
+
+\newpage
+
+\section{Discussion, Limits, and Roadmap}
+
+\subsection{Current Strengths}
+
+Paravizor now provides a coherent local reconnaissance workflow. Its main strengths are:
+
+\begin{itemize}
+    \item A clear project model with local persistence.
+    \item A configurable DAG pipeline instead of hardcoded tool chains.
+    \item Traceable results linked to source tools and nodes.
+    \item Practical CLI and TUI operation modes.
+    \item Recovery mechanisms for interrupted sessions.
+    \item A tool runner designed for long-running external binaries.
+    \item Independent AI analysis and chat windows using local Ollama.
+    \item Export and query features that make data exploitable outside the TUI.
+\end{itemize}
+
+\subsection{Known Limitations}
+
+Despite the strong foundation, some limitations remain:
+
+\begin{itemize}
+    \item The quality of recon results depends on installed external tools and their API keys. For example, tools such as Chaos require credentials.
+    \item Not every third-party tool output can be parsed semantically with the same precision yet.
+    \item Some advanced pipeline branches depend on tools that may not be installed on a typical machine.
+    \item The AI assistant depends on a local Ollama server and a pulled model.
+    \item AI output must remain advisory. The user must validate every recommendation manually.
+    \item Exports currently focus on practical artifacts and Markdown reports, not full PDF reporting automation.
+    \item The default pipeline is ambitious and should be tuned per user machine and engagement scope.
+\end{itemize}
+
+\subsection{Roadmap}
+
+The next development steps are:
+
+\begin{enumerate}
+    \item Add richer parsers for tool-specific JSON outputs.
+    \item Improve tool profiles by separating lightweight, standard, and full pipelines.
+    \item Add a first-run tool setup assistant in the TUI.
+    \item Add better visual summaries of database results in the TUI.
+    \item Improve export templates for professional reporting.
+    \item Add pipeline editing or pipeline selection directly in the TUI.
+    \item Add AI recommendations for pipeline adjustments based on missing evidence or failed tools.
+    \item Add Docker or reproducible environment support for easier deployment.
+\end{enumerate}
+
+\subsection{Risk Management}
+
+\begin{table}[H]
+    \centering
+    \begin{tabularx}{\textwidth}{>{\bfseries}p{4cm}X}
+        \toprule
+        Risk & Mitigation \\
+        \midrule
+        Running out-of-scope recon & Scope include/exclude checks and user-controlled project configuration. \\
+        Hanging external tools & Node timeouts, context cancellation, and process group kill. \\
+        Missing binaries & Tool availability checks, installed-only default behavior, optional installation. \\
+        Database write contention & Serialized write transactions and WAL mode. \\
+        AI hallucination & Evidence-grounded prompts, explicit non-invention instructions, and human validation. \\
+        Sensitive data exposure & Local SQLite storage and local Ollama backend by default. \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Main risks and mitigations}
+    \label{tab:risks}
+\end{table}
+
+\newpage
+
+\section*{General Conclusion}
+\addcontentsline{toc}{section}{General Conclusion}
+
+Paravizor evolved from a prototype idea into an operational terminal-native reconnaissance platform. It addresses the core difficulties of bug bounty reconnaissance: coordinating many tools, preserving scope, storing heterogeneous results, resuming interrupted work, monitoring long campaigns, exporting useful artifacts, and extracting decision-ready insights from large datasets.
+
+The implemented architecture is modular and maintainable. Projects, pipelines, tools, runtime execution, database storage, TUI, CLI, events, and AI assistance are separated into focused packages. This organization makes the system easier to test and extend. The local-first design also respects the sensitivity of reconnaissance data and keeps control in the hands of the operator.
+
+The current version matches the main goals defined in the cahier des charges. A user can create a project, define scope, verify tools, run or resume a structured pipeline, inspect execution through the TUI, export results, query the database, and use a local AI assistant for synthesis and follow-up questions. Remaining work mainly concerns deeper parser coverage, richer report generation, easier environment setup, and advanced pipeline customization.
+
+In conclusion, Paravizor provides a strong foundation for a decision-oriented reconnaissance copilot. It improves repeatability, traceability, and usability while preserving the flexibility expected by security researchers.
+
+\newpage
+
+\section*{Bibliography and Technical References}
+\addcontentsline{toc}{section}{Bibliography and Technical References}
+
+\begin{itemize}
+    \item Go programming language documentation: \url{https://go.dev/doc/}
+    \item Cobra CLI framework: \url{https://github.com/spf13/cobra}
+    \item Bubble Tea TUI framework: \url{https://github.com/charmbracelet/bubbletea}
+    \item Lip Gloss styling library: \url{https://github.com/charmbracelet/lipgloss}
+    \item SQLite documentation: \url{https://www.sqlite.org/docs.html}
+    \item sqlc project: \url{https://sqlc.dev/}
+    \item Ollama local model runtime: \url{https://ollama.com/}
+    \item ProjectDiscovery tools: \url{https://github.com/projectdiscovery}
+    \item OWASP Amass: \url{https://github.com/owasp-amass/amass}
+\end{itemize}
+
+\newpage
+
+\appendix
+\section{Appendix A: Main Commands}
+
+\begin{lstlisting}[style=bashstyle]
+# Build
+make build
+
+# Open TUI
+./paravizor
+
+# Create project
+./paravizor init example -i example.com,*.example.com
+
+# Run installed-tool pipeline
+./paravizor run --dir ./example
+
+# Run and explicitly install missing supported tools
+./paravizor run --dir ./example --install
+
+# Tool management
+./paravizor tools list
+./paravizor tools check --install
+./paravizor tools show subfinder
+
+# Query local database
+./paravizor query --dir ./example "SELECT name, source FROM domains LIMIT 20"
+
+# Export artifacts and report
+./paravizor export artifacts --dir ./example
+./paravizor export report --dir ./example
+\end{lstlisting}
+
+\section{Appendix B: Suggested Figures to Add}
+
+The report compiles even without figures because every missing image is replaced by a placeholder. For a final academic submission, the following figures should be generated and saved under \texttt{figures/}:
+
+\begin{itemize}
+    \item \texttt{use\_case\_diagram.png}
+    \item \texttt{logical\_architecture.png}
+    \item \texttt{database\_schema.png}
+    \item \texttt{pipeline\_dag.png}
+    \item \texttt{project\_creation.png}
+    \item \texttt{sequence\_pipeline\_run.png}
+    \item \texttt{tui\_project\_dashboard.png}
+    \item \texttt{ai\_assistant\_window.png}
+\end{itemize}
+
+\section{Appendix C: Current Validation Snapshot}
+
+At the time this report was rewritten, the repository validation command below succeeded:
+
+\begin{lstlisting}[style=bashstyle]
+go test ./...
+\end{lstlisting}
+
+This confirms that the core packages compile and that the available automated tests pass for configuration, project creation, CLI behavior, engine validation, runtime scope handling, store behavior, tool runner timeout behavior, AI prompt construction, and TUI project view behavior.
+
+\end{document}

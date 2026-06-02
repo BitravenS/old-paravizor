@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +31,9 @@ type Engine struct {
 	runner  *tool.Runner
 	logger  *slog.Logger
 
+	scopeInclude []string
+	scopeExclude []string
+
 	mu         sync.Mutex
 	nodeStatus map[string]NodeStatus
 	nodeStats  map[string]*NodeStats
@@ -49,6 +54,12 @@ func (e *Engine) Bus() *events.Bus {
 // Registry returns the tool registry.
 func (e *Engine) Registry() *tool.Registry {
 	return e.toolReg
+}
+
+// SetScope configures in-scope and out-of-scope filters for newly produced items.
+func (e *Engine) SetScope(include, exclude []string) {
+	e.scopeInclude = append([]string(nil), include...)
+	e.scopeExclude = append([]string(nil), exclude...)
 }
 
 // NewEngine creates a new pipeline engine.
@@ -88,6 +99,10 @@ func (e *Engine) Run(ctx context.Context) error {
 	e.cancel = cancel
 	defer cancel()
 
+	if len(e.dag.Order) == 0 {
+		return fmt.Errorf("pipeline DAG has no nodes")
+	}
+
 	e.bus.Publish(events.PipelineStarted{
 		PipelineID: e.dag.Nodes[e.dag.Order[0]].ID,
 		NodeCount:  len(e.dag.Nodes),
@@ -95,26 +110,65 @@ func (e *Engine) Run(ctx context.Context) error {
 	})
 
 	startTime := time.Now()
+	type nodeResult struct {
+		nodeID string
+		err    error
+	}
 
-	// Process nodes in topological order.
-	for _, nodeID := range e.dag.Order {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+	pending := make(map[string]int, len(e.pendingUp))
+	for nodeID, count := range e.pendingUp {
+		pending[nodeID] = count
+	}
 
+	ready := e.dag.RootNodes()
+	doneCh := make(chan nodeResult, len(e.dag.Nodes))
+	running := 0
+	completed := 0
+	launch := func(nodeID string) {
+		running++
 		nodeCfg := e.dag.Nodes[nodeID]
-		if err := e.processNode(ctx, nodeCfg); err != nil {
-			e.logger.Error("node failed", "node", nodeID, "error", err)
-			e.setStatus(nodeID, NodeStatusError)
-			e.bus.Publish(events.NodeError{
-				NodeID: nodeID,
-				Err:    err,
-				Fatal:  true,
-				Time:   time.Now(),
-			})
-			continue
+		go func() {
+			doneCh <- nodeResult{nodeID: nodeID, err: e.processNode(ctx, nodeCfg)}
+		}()
+	}
+
+	for completed < len(e.dag.Nodes) {
+		for len(ready) > 0 {
+			nodeID := ready[0]
+			ready = ready[1:]
+			launch(nodeID)
 		}
-		e.setStatus(nodeID, NodeStatusCompleted)
+
+		if running == 0 {
+			return fmt.Errorf("pipeline scheduler stalled after %d/%d nodes", completed, len(e.dag.Nodes))
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case result := <-doneCh:
+			running--
+			completed++
+			if result.err != nil {
+				e.logger.Error("node failed", "node", result.nodeID, "error", result.err)
+				e.setStatus(result.nodeID, NodeStatusError)
+				e.bus.Publish(events.NodeError{
+					NodeID: result.nodeID,
+					Err:    result.err,
+					Fatal:  true,
+					Time:   time.Now(),
+				})
+			} else {
+				e.setStatus(result.nodeID, NodeStatusCompleted)
+			}
+
+			for _, child := range e.dag.Edges[result.nodeID] {
+				pending[child]--
+				if pending[child] == 0 {
+					ready = append(ready, child)
+				}
+			}
+		}
 	}
 
 	totalItems := 0
@@ -149,7 +203,11 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 	totalOut := 0
 
 	for {
-		states, err := e.store.GetPendingItems(ctx, nodeID, consumes, LIMIT)
+		limit := LIMIT
+		if nodeCfg.Batch.Size > 0 && nodeCfg.Batch.Size < limit {
+			limit = nodeCfg.Batch.Size
+		}
+		states, err := e.store.GetPendingItems(ctx, nodeID, consumes, limit)
 		if err != nil {
 			return fmt.Errorf("get pending items: %w", err)
 		}
@@ -208,13 +266,15 @@ func (e *Engine) processNode(ctx context.Context, nodeCfg *NodeConfig) error {
 		for _, item := range states {
 			now := time.Now()
 			ct := sql.NullTime{Time: now, Valid: true}
-			e.store.SetPipelineState(ctx, &db.PipelineState{
+			if err := e.store.SetPipelineState(ctx, &db.PipelineState{
 				ItemType:    item.ItemType,
 				ItemID:      item.ItemID,
 				NodeID:      nodeID,
 				Status:      "completed",
 				CompletedAt: ct,
-			})
+			}); err != nil {
+				return fmt.Errorf("mark item completed: %w", err)
+			}
 		}
 
 		// Store output items and enqueue for downstream nodes
@@ -257,15 +317,37 @@ func (e *Engine) runSingle(ctx context.Context, nodeCfg *NodeConfig, input []str
 		return nil, nil
 	}
 
+	if timeout := parseNodeTimeout(nodeCfg.Batch.Timeout); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
 	result, err := e.runner.Run(ctx, def, input, nodeCfg.ID)
 	if err != nil {
 		return nil, fmt.Errorf("run %s: %w", toolName, err)
 	}
 	if result.Error != nil {
 		e.logger.Warn("tool returned error", "tool", toolName, "error", result.Error)
+		e.bus.Publish(events.LogMessage{
+			Level:   "warn",
+			Message: fmt.Sprintf("tool %s on node %s returned error: %v", toolName, nodeCfg.ID, result.Error),
+			Time:    time.Now(),
+		})
 	}
 
 	return result.Items, nil
+}
+
+func parseNodeTimeout(value string) time.Duration {
+	if strings.TrimSpace(value) == "" {
+		return 0
+	}
+	timeout, err := time.ParseDuration(value)
+	if err != nil {
+		return 0
+	}
+	return timeout
 }
 
 func (e *Engine) resolveInputStrings(ctx context.Context, states []db.PipelineState, itemType string) []string {
@@ -344,84 +426,230 @@ func (e *Engine) storeAndRoute(ctx context.Context, nodeCfg *NodeConfig, out []i
 	stored := 0
 
 	for _, item := range out {
-		var itemID int64
-		var err error
-
-		switch v := item.(type) {
-		case *items.DomainItem:
-			itemID, err = e.store.InsertDomain(ctx, v.Name, v.SourceName, nil)
-			if err == nil {
-				e.updateDomainLivenessFromSource(ctx, itemID, v.SourceName)
-			}
-		case items.DomainItem:
-			itemID, err = e.store.InsertDomain(ctx, v.Name, v.SourceName, nil)
-			if err == nil {
-				e.updateDomainLivenessFromSource(ctx, itemID, v.SourceName)
-			}
-		case *items.URLItem:
-			itemID, err = e.store.InsertURL(ctx, v.FullURL, v.SourceName, nil, nil)
-		case items.URLItem:
-			itemID, err = e.store.InsertURL(ctx, v.FullURL, v.SourceName, nil, nil)
-		case *items.FindingItem:
-			f := &db.Finding{
-				Scanner:  v.SourceName,
-				Severity: &v.Severity,
-				Title:    v.Title,
-			}
-			itemID, err = e.store.InsertFinding(ctx, f)
-			if err == nil {
-				e.bus.Publish(events.FindingDiscovered{
-					FindingID: itemID,
-					Title:     v.Title,
-					Severity:  v.Severity,
-					Scanner:   v.SourceName,
-					NodeID:    nodeCfg.ID,
-					Time:      time.Now(),
-				})
-			}
-		case items.FindingItem:
-			f := &db.Finding{
-				Scanner:  v.SourceName,
-				Severity: &v.Severity,
-				Title:    v.Title,
-			}
-			itemID, err = e.store.InsertFinding(ctx, f)
-			if err == nil {
-				e.bus.Publish(events.FindingDiscovered{
-					FindingID: itemID,
-					Title:     v.Title,
-					Severity:  v.Severity,
-					Scanner:   v.SourceName,
-					NodeID:    nodeCfg.ID,
-					Time:      time.Now(),
-				})
-			}
-		default:
+		if item == nil {
+			continue
+		}
+		if !e.itemAllowedByScope(item) {
+			e.bus.Publish(events.OutOfScopeFiltered{
+				ItemType: string(item.Type()),
+				ItemID:   item.ItemID(),
+				NodeID:   nodeCfg.ID,
+				Reason:   "project scope",
+				Time:     time.Now(),
+			})
 			continue
 		}
 
+		itemID, err := e.storeItem(ctx, nodeCfg, item)
 		if err != nil {
 			e.logger.Warn("failed to store item", "type", item.Type(), "error", err)
 			continue
 		}
 
-		// Enqueue for downstream nodes
 		for _, route := range nodeCfg.Routes {
 			if route.Condition != "" && !EvalCondition(route.Condition, item) {
 				continue
 			}
-			e.store.SetPipelineState(ctx, &db.PipelineState{
+			if err := e.store.SetPipelineState(ctx, &db.PipelineState{
 				ItemType: string(item.Type()),
 				ItemID:   itemID,
 				NodeID:   route.To,
 				Status:   "pending",
-			})
+			}); err != nil {
+				return stored, fmt.Errorf("enqueue item %d for node %q: %w", itemID, route.To, err)
+			}
 		}
 
 		stored++
 	}
 
 	return stored, nil
+}
+
+func (e *Engine) storeItem(ctx context.Context, nodeCfg *NodeConfig, item items.Item) (int64, error) {
+	switch v := item.(type) {
+	case *items.DomainItem:
+		return e.storeDomain(ctx, nodeCfg, v.Name, v.SourceName)
+	case items.DomainItem:
+		return e.storeDomain(ctx, nodeCfg, v.Name, v.SourceName)
+	case *items.URLItem:
+		return e.storeURL(ctx, nodeCfg, v.FullURL, v.SourceName)
+	case items.URLItem:
+		return e.storeURL(ctx, nodeCfg, v.FullURL, v.SourceName)
+	case *items.IPItem:
+		return e.store.UpsertIP(ctx, v.Address)
+	case items.IPItem:
+		return e.store.UpsertIP(ctx, v.Address)
+	case *items.PortItem:
+		return e.storePort(ctx, v)
+	case items.PortItem:
+		return e.storePort(ctx, &v)
+	case *items.DNSRecordItem:
+		return e.storeDNSRecord(ctx, v)
+	case items.DNSRecordItem:
+		return e.storeDNSRecord(ctx, &v)
+	case *items.FindingItem:
+		return e.storeFinding(ctx, nodeCfg, v)
+	case items.FindingItem:
+		return e.storeFinding(ctx, nodeCfg, &v)
+	case *items.FileItem:
+		return e.storeFile(ctx, v)
+	case items.FileItem:
+		return e.storeFile(ctx, &v)
+	default:
+		return 0, fmt.Errorf("unsupported item type %T", item)
+	}
+}
+
+func (e *Engine) storeDomain(ctx context.Context, nodeCfg *NodeConfig, name, source string) (int64, error) {
+	itemID, err := e.store.InsertDomain(ctx, name, source, nil)
+	if err == nil {
+		e.updateDomainLivenessFromSource(ctx, itemID, source)
+		e.bus.Publish(events.DomainDiscovered{
+			DomainName: name,
+			DomainID:   itemID,
+			Source:     source,
+			NodeID:     nodeCfg.ID,
+			Time:       time.Now(),
+		})
+	}
+	return itemID, err
+}
+
+func (e *Engine) storeURL(ctx context.Context, nodeCfg *NodeConfig, fullURL, source string) (int64, error) {
+	itemID, err := e.store.InsertURL(ctx, fullURL, source, nil, nil)
+	if err == nil {
+		e.bus.Publish(events.URLDiscovered{
+			FullURL: fullURL,
+			URLID:   itemID,
+			Source:  source,
+			NodeID:  nodeCfg.ID,
+			Time:    time.Now(),
+		})
+	}
+	return itemID, err
+}
+
+func (e *Engine) storePort(ctx context.Context, item *items.PortItem) (int64, error) {
+	ipID, err := e.store.UpsertIP(ctx, item.Host)
+	if err != nil {
+		return 0, err
+	}
+	if item.Protocol == "" {
+		item.Protocol = "tcp"
+	}
+	if err := e.store.UpsertPort(ctx, ipID, item.Port, item.Protocol, nil, nil, item.SourceName); err != nil {
+		return 0, err
+	}
+	var id int64
+	err = e.store.DB().QueryRowContext(ctx, `SELECT id FROM ports WHERE ip_id = ? AND port = ? AND protocol = ?`, ipID, item.Port, item.Protocol).Scan(&id)
+	return id, err
+}
+
+func (e *Engine) storeDNSRecord(ctx context.Context, item *items.DNSRecordItem) (int64, error) {
+	domainID, err := e.store.InsertDomain(ctx, item.Name, item.SourceName, nil)
+	if err != nil {
+		return 0, err
+	}
+	if err := e.store.UpsertDNSRecord(ctx, domainID, item.RecordType, item.RecordValue, nil, item.SourceName); err != nil {
+		return 0, err
+	}
+	var id int64
+	err = e.store.DB().QueryRowContext(ctx, `SELECT id FROM dns_records WHERE domain_id = ? AND record_type = ? AND value = ?`, domainID, item.RecordType, item.RecordValue).Scan(&id)
+	return id, err
+}
+
+func (e *Engine) storeFinding(ctx context.Context, nodeCfg *NodeConfig, item *items.FindingItem) (int64, error) {
+	severity := normalizeSeverity(item.Severity)
+	f := &db.Finding{
+		Scanner:  item.SourceName,
+		Severity: &severity,
+		Title:    item.Title,
+	}
+	itemID, err := e.store.InsertFinding(ctx, f)
+	if err == nil {
+		e.bus.Publish(events.FindingDiscovered{
+			FindingID: itemID,
+			Title:     item.Title,
+			Severity:  severity,
+			Scanner:   item.SourceName,
+			NodeID:    nodeCfg.ID,
+			Time:      time.Now(),
+		})
+	}
+	return itemID, err
+}
+
+func (e *Engine) storeFile(ctx context.Context, item *items.FileItem) (int64, error) {
+	originURL := strings.TrimSpace(item.URL)
+	if originURL == "" {
+		originURL = "file://" + strings.TrimLeft(item.Path, "/")
+	}
+	urlID, err := e.store.InsertURL(ctx, originURL, item.SourceName, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	fileType := "unknown"
+	return e.store.InsertDownloadedFile(ctx, urlID, item.Path, fileType, nil, nil)
+}
+
+func normalizeSeverity(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "critical", "high", "medium", "low", "info":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "info"
+	}
+}
+
+func (e *Engine) itemAllowedByScope(item items.Item) bool {
+	target := strings.TrimSpace(string(item.ScopeTarget()))
+	if target == "" {
+		return true
+	}
+	for _, pattern := range e.scopeExclude {
+		if scopePatternMatches(pattern, target) {
+			return false
+		}
+	}
+	if len(e.scopeInclude) == 0 {
+		return true
+	}
+	for _, pattern := range e.scopeInclude {
+		if scopePatternMatches(pattern, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func scopePatternMatches(pattern, target string) bool {
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+	target = strings.ToLower(strings.TrimSpace(target))
+	if pattern == "" || target == "" {
+		return false
+	}
+	host := targetHost(target)
+	if strings.HasPrefix(pattern, "regex:") {
+		re, err := regexp.Compile(strings.TrimPrefix(pattern, "regex:"))
+		return err == nil && (re.MatchString(target) || re.MatchString(host))
+	}
+	if strings.HasPrefix(pattern, "*.") {
+		suffix := strings.TrimPrefix(pattern, "*.")
+		return host == suffix || strings.HasSuffix(host, "."+suffix)
+	}
+	if strings.HasPrefix(pattern, "*") && len(pattern) > 1 {
+		suffix := strings.TrimLeft(strings.TrimPrefix(pattern, "*"), ".")
+		return suffix != "" && (host == suffix || strings.HasSuffix(host, "."+suffix))
+	}
+	return target == pattern || host == pattern || strings.Contains(target, pattern)
+}
+
+func targetHost(target string) string {
+	if u, err := url.Parse(target); err == nil && u.Hostname() != "" {
+		return u.Hostname()
+	}
+	return strings.Trim(target, " []")
 }
 
 func (e *Engine) Stop() {

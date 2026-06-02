@@ -139,6 +139,7 @@ type ProcessStarted struct {
 	ToolName  string
 	Command   string
 	PID       int
+	NodeID    string
 	Time      time.Time
 }
 
@@ -150,6 +151,7 @@ type ProcessCompleted struct {
 	ToolName  string
 	ExitCode  int
 	Duration  time.Duration
+	NodeID    string
 	Time      time.Time
 }
 
@@ -160,6 +162,7 @@ type ProcessOutput struct {
 	ProcessID int64
 	Stream    string // "stdout" | "stderr"
 	Line      string
+	NodeID    string
 	Time      time.Time
 }
 

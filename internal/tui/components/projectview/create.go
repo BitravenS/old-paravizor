@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/bitravens/paravizor/v1/internal/config"
+	"github.com/bitravens/paravizor/v1/internal/engine"
 	proj "github.com/bitravens/paravizor/v1/internal/project"
 	tuictx "github.com/bitravens/paravizor/v1/internal/tui/context"
 )
@@ -56,6 +57,25 @@ func buildInputs(ctx *tuictx.ProgramContext) []textinput.Model {
 	}
 
 	return inputs
+}
+
+func buildAIChatInput(ctx *tuictx.ProgramContext) textinput.Model {
+	t := textinput.New()
+
+	styles := textinput.DefaultDarkStyles()
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.WarningText)
+	styles.Focused.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
+	styles.Blurred.Prompt = lipgloss.NewStyle().Foreground(ctx.Theme.SecondaryText)
+	styles.Blurred.Text = lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText)
+	styles.Cursor.Color = ctx.Theme.WarningText
+
+	t.SetStyles(styles)
+	t.Prompt = "Ask> "
+	t.Placeholder = "press c, ask about recon, enter to send"
+	t.CharLimit = 1200
+	t.SetWidth(80)
+	t.Blur()
+	return t
 }
 
 func (m *Model) handleCreateKey(msg tea.KeyMsg) []tea.Cmd {
@@ -133,6 +153,14 @@ func (m *Model) submitCreate() tea.Cmd {
 
 	m.projectDir = dir
 	m.projCfg = cfg
+	m.ctx.ProjectDir = dir
+	m.ctx.Project = cfg
+	if loadedPipeline, err := engine.LoadExternalPipeline(cfg.Pipeline); loadedPipeline != nil {
+		m.ctx.Pipeline = loadedPipeline
+	} else {
+		m.formErr = fmt.Errorf("project created but failed to load pipeline: %w", err)
+		return nil
+	}
 	m.formErr = nil
 	m.state = stateProject
 	m.rebuildNodes()
@@ -239,6 +267,9 @@ func (m *Model) submitEditScope() tea.Cmd {
 
 	m.projCfg.Scope.Include = includes
 	m.projCfg.Scope.Exclude = excludes
+	if m.ctx.Project != nil {
+		m.ctx.Project.Scope = m.projCfg.Scope
+	}
 
 	err := proj.WriteProjectConfig(m.projectDir, *m.projCfg)
 	if err != nil {

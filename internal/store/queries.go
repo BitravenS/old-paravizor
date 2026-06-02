@@ -84,8 +84,9 @@ func (s *Store) InsertFinding(ctx context.Context, f *db.Finding) (int64, error)
 		}); err != nil {
 			return fmt.Errorf("insert finding: %w", err)
 		}
-		// SQLite last_insert_rowid() via the write connection.
-		if err := s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		if err != nil {
 			return fmt.Errorf("fetch finding id: %w", err)
 		}
 		return nil
@@ -149,7 +150,9 @@ func (s *Store) InsertScopeRule(ctx context.Context, pattern, ruleType string, i
 		}); err != nil {
 			return fmt.Errorf("insert scope rule: %w", err)
 		}
-		if err := s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id); err != nil {
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		if err != nil {
 			return fmt.Errorf("fetch scope rule id: %w", err)
 		}
 		return nil
@@ -231,7 +234,9 @@ func (s *Store) InsertBatch(ctx context.Context, nodeID string, itemCount int) (
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		return err
 	})
 	return id, err
 }
@@ -261,7 +266,9 @@ func (s *Store) InsertProcess(ctx context.Context, p *db.Process) (int64, error)
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		return err
 	})
 	return id, err
 }
@@ -389,7 +396,9 @@ func (s *Store) InsertDownloadedFile(ctx context.Context, urlID int64, filePath,
 		}); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		return err
 	})
 	return id, err
 }
@@ -431,7 +440,9 @@ func (s *Store) InsertNote(ctx context.Context, content string) (int64, error) {
 		if err := q.InsertNote(ctx, content); err != nil {
 			return err
 		}
-		return s.writeDB.QueryRowContext(ctx, `SELECT last_insert_rowid()`).Scan(&id)
+		var err error
+		id, err = q.LastInsertRowID(ctx)
+		return err
 	})
 	return id, err
 }

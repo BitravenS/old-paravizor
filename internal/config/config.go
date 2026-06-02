@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"charm.land/log/v2"
+	"github.com/bitravens/paravizor/v1/internal/ai"
 	"github.com/bitravens/paravizor/v1/internal/utils"
 	yamler "gopkg.in/yaml.v3"
 )
@@ -18,6 +19,7 @@ func prvzrConfigDir() (string, error) {
 }
 
 func GetDefaultConfig() Config {
+	aiCfg := ai.DefaultConfig()
 	return Config{
 		APIKeys:             make(map[string]string),
 		Theme:               "default",
@@ -26,7 +28,7 @@ func GetDefaultConfig() Config {
 		HealthCheckInterval: 10,
 		DBConfig:            nil,
 		LogLevel:            "info",
-		AIConfig:            nil,
+		AIConfig:            &aiCfg,
 	}
 }
 

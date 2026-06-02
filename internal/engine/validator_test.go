@@ -117,3 +117,14 @@ func assertErrorContains(t *testing.T, err error, want string) {
 		t.Fatalf("error = %q, want substring %q", err, want)
 	}
 }
+
+func TestScopePatternMatchesLeadingStarWithoutDot(t *testing.T) {
+	for _, target := range []string{"insat.rnu.tn", "www.insat.rnu.tn", "https://www.insat.rnu.tn/login"} {
+		if !scopePatternMatches("*insat.rnu.tn", target) {
+			t.Fatalf("*insat.rnu.tn did not match %q", target)
+		}
+	}
+	if scopePatternMatches("*insat.rnu.tn", "insat.rnu.tn.evil.test") {
+		t.Fatal("*insat.rnu.tn matched sibling/evil suffix")
+	}
+}

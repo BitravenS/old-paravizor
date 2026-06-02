@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/bitravens/paravizor/v1/internal/events"
@@ -44,15 +46,17 @@ type Runner struct {
 	logsDir        string
 	rateLimiter    RateLimiter
 	processManager *ProcessManager
+	nextProcessID  *atomic.Int64
 }
 
 // NewRunner creates a new Runner with the given event bus and log directory.
 // Pass an empty logsDir to disable log saving.
 func NewRunner(bus *events.Bus, logsDir string) *Runner {
 	return &Runner{
-		bus:         bus,
-		logsDir:     logsDir,
-		rateLimiter: noopRateLimiter{},
+		bus:           bus,
+		logsDir:       logsDir,
+		rateLimiter:   noopRateLimiter{},
+		nextProcessID: &atomic.Int64{},
 	}
 }
 
@@ -63,6 +67,7 @@ func (r *Runner) WithRateLimiter(rl RateLimiter) *Runner {
 		logsDir:        r.logsDir,
 		rateLimiter:    rl,
 		processManager: r.processManager,
+		nextProcessID:  r.nextProcessID,
 	}
 }
 
@@ -73,6 +78,7 @@ func (r *Runner) WithProcessManager(pm *ProcessManager) *Runner {
 		logsDir:        r.logsDir,
 		rateLimiter:    r.rateLimiter,
 		processManager: pm,
+		nextProcessID:  r.nextProcessID,
 	}
 }
 
@@ -80,6 +86,15 @@ func (r *Runner) WithProcessManager(pm *ProcessManager) *Runner {
 // input is a slice of raw string values (domain names, URLs, …) to pass to the tool.
 // nodeID is the pipeline node identifier used for event tagging and log paths.
 func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeID string) (*RunResult, error) {
+	if activating, ok := r.rateLimiter.(interface {
+		Begin(string)
+		End(string)
+	}); ok {
+		activating.Begin(nodeID)
+		defer activating.End(nodeID)
+	}
+	r.rateLimiter.Wait(nodeID)
+
 	if !def.Available {
 		return nil, fmt.Errorf("tool %s is not available (binary %q not found)", def.Name, def.Binary)
 	}
@@ -97,6 +112,7 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 
 	args := r.buildArgs(def, input)
 	cmd := exec.CommandContext(ctx, def.BinaryPath, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// Inherit the current environment and append any tool-specific overrides.
 	cmd.Env = os.Environ()
@@ -133,6 +149,17 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 		return nil, fmt.Errorf("start %s: %w", def.Name, err)
 	}
 
+	killWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			if cmd.Process != nil {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+		case <-killWatcherDone:
+		}
+	}()
+
 	if r.processManager != nil {
 		r.processManager.Register(cmd, nodeID, def.Name)
 		defer r.processManager.Unregister(cmd)
@@ -142,12 +169,15 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 	if cmd.Process != nil {
 		pid = cmd.Process.Pid
 	}
+	processID := r.nextProcessID.Add(1)
 
 	r.bus.Publish(events.ProcessStarted{
-		ToolName: def.Name,
-		Command:  fmt.Sprintf("%s %s", def.BinaryPath, strings.Join(args, " ")),
-		PID:      pid,
-		Time:     time.Now(),
+		ProcessID: processID,
+		ToolName:  def.Name,
+		Command:   fmt.Sprintf("%s %s", def.BinaryPath, strings.Join(args, " ")),
+		PID:       pid,
+		NodeID:    nodeID,
+		Time:      time.Now(),
 	})
 
 	// Feed stdin in a goroutine so it doesn't block the main execution path.
@@ -172,9 +202,11 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 			stderrBuf.WriteString(line)
 			stderrBuf.WriteByte('\n')
 			r.bus.Publish(events.ProcessOutput{
-				Stream: "stderr",
-				Line:   line,
-				Time:   time.Now(),
+				ProcessID: processID,
+				Stream:    "stderr",
+				Line:      line,
+				NodeID:    nodeID,
+				Time:      time.Now(),
 			})
 		}
 	}()
@@ -185,23 +217,40 @@ func (r *Runner) Run(ctx context.Context, def *ToolConfig, input []string, nodeI
 
 	// Wait for the process to exit.
 	waitErr := cmd.Wait()
+	close(killWatcherDone)
 	result.Duration = time.Since(start)
 	result.Stdout = stdoutBuf.String()
 	result.Stderr = stderrBuf.String()
 
-	if waitErr != nil {
+	ctxErr := ctx.Err()
+	if ctxErr != nil {
+		result.ExitCode = -1
+		result.Error = fmt.Errorf("%s stopped: %w", def.Name, ctxErr)
+		line := fmt.Sprintf("%s stopped: %v", def.Name, ctxErr)
+		result.Stderr += line + "\n"
+		r.bus.Publish(events.ProcessOutput{
+			ProcessID: processID,
+			Stream:    "stderr",
+			Line:      line,
+			NodeID:    nodeID,
+			Time:      time.Now(),
+		})
+	} else if waitErr != nil {
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			result.ExitCode = exitErr.ExitCode()
+			result.Error = fmt.Errorf("%s exited with code %d", def.Name, result.ExitCode)
 		} else {
 			result.Error = waitErr
 		}
 	}
 
 	r.bus.Publish(events.ProcessCompleted{
-		ToolName: def.Name,
-		ExitCode: result.ExitCode,
-		Duration: result.Duration,
-		Time:     time.Now(),
+		ProcessID: processID,
+		ToolName:  def.Name,
+		ExitCode:  result.ExitCode,
+		Duration:  result.Duration,
+		NodeID:    nodeID,
+		Time:      time.Now(),
 	})
 
 	// Parse output into items if the tool declares a produces type.

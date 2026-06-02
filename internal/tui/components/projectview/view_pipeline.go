@@ -21,10 +21,26 @@ func (m Model) renderPipeline(w, h int) string {
 	}
 
 	var b strings.Builder
-	for i, n := range m.nodes {
+	visibleRows := h
+	scrollable := len(m.nodes) > h
+	if scrollable {
+		visibleRows = max(1, h-1)
+	}
+	start := m.pipelineScroll
+	maxScroll := max(0, len(m.nodes)-visibleRows)
+	if start < 0 {
+		start = 0
+	}
+	if start > maxScroll {
+		start = maxScroll
+	}
+	end := min(len(m.nodes), start+visibleRows)
+
+	for i := start; i < end; i++ {
+		n := m.nodes[i]
 		icon, color := nodeStatusIcon(n.Status, m.ctx)
 		iconStyle := lipgloss.NewStyle().Foreground(color)
-		
+
 		nameStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText)
 		if m.activePanel == 0 && i == m.pipelineCursor {
 			nameStyle = lipgloss.NewStyle().Foreground(m.ctx.Theme.WarningText).Bold(true)
@@ -41,7 +57,11 @@ func (m Model) renderPipeline(w, h int) string {
 
 	if len(m.nodes) == 0 {
 		b.WriteString(lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
-			Render("No pipeline nodes loaded."))
+			Render("No pipeline nodes loaded.") + "\n")
+	} else if scrollable {
+		position := fmt.Sprintf("%d-%d/%d", start+1, end, len(m.nodes))
+		b.WriteString(lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).
+			Render("↑/↓ pgup/pgdn home/end  "+position) + "\n")
 	}
 
 	inner := b.String()

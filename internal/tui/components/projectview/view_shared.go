@@ -21,6 +21,9 @@ func (m Model) renderStatus(w int) string {
 	}
 
 	statusPart := "Ready"
+	if m.finished && m.runErr == nil {
+		statusPart = lipgloss.NewStyle().Foreground(m.ctx.Theme.SuccessText).Render("Finished")
+	}
 	if m.running {
 		statusPart = lipgloss.NewStyle().Foreground(m.ctx.Theme.SuccessText).Render("Running...")
 	}
@@ -34,12 +37,21 @@ func (m Model) renderStatus(w int) string {
 
 	helpStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText)
 	var helpParts []string
-	if !m.running {
-		helpParts = append(helpParts, "ctrl+r: Run")
+	if m.activeWindow == projectWindowAI {
+		helpParts = append(helpParts, "AI")
+		if m.aiInput.Focused() {
+			helpParts = append(helpParts, "enter: Send", "esc: Blur", "ctrl+a: Running")
+		} else {
+			helpParts = append(helpParts, "c: Chat", "r: Analyze", "ctrl+a: Running", "↑/↓: Scroll", "esc: Back")
+		}
 	} else {
-		helpParts = append(helpParts, "esc: Stop")
+		if !m.running {
+			helpParts = append(helpParts, "r: Run")
+		} else {
+			helpParts = append(helpParts, "esc: Stop")
+		}
+		helpParts = append(helpParts, "ctrl+a: AI", "tab: Panel", "↑/↓: Scroll", "enter: Open", "esc: Back")
 	}
-	helpParts = append(helpParts, "esc: Back")
 	right := helpStyle.Render(strings.Join(helpParts, "  "))
 
 	leftStyle := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText)

@@ -28,14 +28,17 @@ func WriteDefaultPipeline(path string) error {
 		Description: "Default Paravizor bug-bounty recon pipeline",
 
 		// Init maps scope item types to their pipeline entry points.
-		// Wildcard domains fan-out to all three passive enumeration tools so they
-		// run in parallel from the start.  Exact (non-wildcard) domains skip
-		// enumeration and go directly to live-host filtering.  Path-scoped
-		// targets (full URLs) enter at URL deduplication.
+		// Wildcard and exact domains fan-out to passive enumeration tools so a
+		// normal target like example.com still discovers subdomains without the
+		// user having to write *.example.com. Exact domains also go directly to
+		// live-host filtering. Path-scoped targets enter at URL deduplication.
 		Init: []InitConfig{
 			{Scope: "wildcard", Node: "subdomain-passive-subfinder", ItemType: "domain"},
 			{Scope: "wildcard", Node: "subdomain-passive-chaos", ItemType: "domain"},
 			{Scope: "wildcard", Node: "subdomain-passive-amass", ItemType: "domain"},
+			{Scope: "exact", Node: "subdomain-passive-subfinder", ItemType: "domain"},
+			{Scope: "exact", Node: "subdomain-passive-chaos", ItemType: "domain"},
+			{Scope: "exact", Node: "subdomain-passive-amass", ItemType: "domain"},
 			{Scope: "exact", Node: "dnsx-live", ItemType: "domain"},
 			{Scope: "path", Node: "url-dedup", ItemType: "url"},
 		},
@@ -94,7 +97,7 @@ func WriteDefaultPipeline(path string) error {
 				Tool:     "amass-passive",
 				Consumes: "domain",
 				Produces: "domain",
-				Batch:    BatchConfig{Size: 1, Timeout: "10s"},
+				Batch:    BatchConfig{Size: 1, Timeout: "2m"},
 				Routes: []RouteConfig{
 					{To: "subdomain-bruteforce"},
 					{To: "dnsx-live"},

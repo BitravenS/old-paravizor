@@ -70,6 +70,17 @@ func (p *CreditPool) Complete(nodeID string) {
 	p.rebalanceLocked()
 }
 
+// Begin activates rate tracking for a node. It is intentionally named to match
+// the tool runner's optional activating rate limiter interface.
+func (p *CreditPool) Begin(nodeID string) {
+	p.Activate(nodeID)
+}
+
+// End completes rate tracking for a node.
+func (p *CreditPool) End(nodeID string) {
+	p.Complete(nodeID)
+}
+
 // Rebalance triggers an immediate rebalance (e.g. after adaptive throttle).
 func (p *CreditPool) Rebalance() {
 	p.mu.Lock()
