@@ -16,9 +16,10 @@ const Width = 26
 type ProjectSelectedMsg struct{ Path string }
 
 type Model struct {
-	ctx    *context.ProgramContext
-	height int
-	cursor int
+	ctx     *context.ProgramContext
+	height  int
+	cursor  int
+	focused bool
 }
 
 func NewModel(ctx *context.ProgramContext) Model {
@@ -28,6 +29,8 @@ func NewModel(ctx *context.ProgramContext) Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m *Model) SetHeight(h int) { m.height = h }
+
+func (m *Model) SetFocused(focused bool) { m.focused = focused }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	projects := m.ctx.Config.RecentProjects
@@ -64,7 +67,11 @@ func (m Model) View() string {
 
 	divider := lipgloss.NewStyle().Foreground(th.FaintBorder).Render(strings.Repeat("─", inner))
 
-	sectionLabel := lipgloss.NewStyle().Foreground(th.SecondaryText).Bold(true).Width(inner).Render("Recent Projects")
+	labelColor := th.SecondaryText
+	if m.focused {
+		labelColor = th.WarningText
+	}
+	sectionLabel := lipgloss.NewStyle().Foreground(labelColor).Bold(true).Width(inner).Render("Recent Projects")
 
 	var rows []string
 	rows = append(rows,
@@ -89,7 +96,7 @@ func (m Model) View() string {
 			dir = "…" + dir[len(dir)-maxDir+1:]
 		}
 
-		if i == m.cursor {
+		if i == m.cursor && m.focused {
 			rows = append(rows,
 				padL+lipgloss.NewStyle().Foreground(th.WarningText).Bold(true).Width(inner).Render("▶ "+base),
 				padL+lipgloss.NewStyle().Foreground(th.SecondaryText).Width(inner).Render("  "+dir),

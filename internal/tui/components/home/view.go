@@ -46,22 +46,12 @@ func (m Model) renderLeft(w int) string {
 		"",
 	)
 
-	if m.leftState == panelCreate {
-		rows = append(rows,
-			lipgloss.NewStyle().Foreground(th.WarningText).Bold(true).Width(inner).Render("New Project"),
-			lipgloss.NewStyle().Foreground(th.FaintText).Width(inner).Render("Enter the project directory path."),
-			"",
-			m.createInput.View(),
-			"",
-			lipgloss.NewStyle().Foreground(th.FaintText).Render("enter  confirm   esc  cancel"),
-		)
+	if m.leftState == panelOpen {
+		rows = append(rows, m.renderProjectBrowser(inner)...)
 	} else {
-		// Single action: New Project
-		actions := []struct{ title, desc string }{
-			{"New Project", "Initialize a new recon project directory"},
-		}
+		actions := homeActions()
 		for i, a := range actions {
-			selected := m.focus == focusLeft && i == m.actionCursor
+			selected := m.active && m.focus == focusLeft && i == m.actionCursor
 			if selected {
 				rows = append(rows,
 					lipgloss.NewStyle().Foreground(th.WarningText).Bold(true).Width(inner).Render("▶ "+a.title),
@@ -79,20 +69,94 @@ func (m Model) renderLeft(w int) string {
 		faint := lipgloss.NewStyle().Foreground(th.FaintText)
 		rows = append(rows,
 			faint.Render("  n    new project"),
+			faint.Render("  o    open project"),
 			faint.Render("  s    settings"),
 			faint.Render("  ?    help"),
-			faint.Render(" tab   switch panel"),
+			faint.Render(" tab   recent/catalog"),
 		)
 	}
 
 	border := th.FaintBorder
-	if m.focus == focusLeft {
+	if m.active && m.focus == focusLeft {
 		border = th.PrimaryBorder
 	}
 	return box(strings.Join(rows, "\n"), w, m.h, border, th.PrimaryText)
 }
 
 // ── Right panel ───────────────────────────────────────────────────────────────
+
+func (m Model) renderProjectBrowser(inner int) []string {
+	th := m.ctx.Theme
+	title := lipgloss.NewStyle().Foreground(th.WarningText).Bold(true).Width(inner)
+	faint := lipgloss.NewStyle().Foreground(th.FaintText).Width(inner)
+	primary := lipgloss.NewStyle().Foreground(th.PrimaryText).Width(inner)
+	secondary := lipgloss.NewStyle().Foreground(th.SecondaryText).Width(inner)
+
+	rows := []string{
+		title.Render("Open Project"),
+		faint.Render("Choose an existing project."),
+		"",
+	}
+
+	if len(m.projects) == 0 {
+		rows = append(rows,
+			faint.Italic(true).Render("No projects found."),
+			faint.Render("Press r to rescan or n to create one."),
+			"",
+			faint.Render("Search roots: current folder, parent, home/projects, home/recon."),
+			"",
+			faint.Render("enter open   r refresh   n new   esc back"),
+		)
+		return rows
+	}
+
+	visible := m.visibleProjectItems()
+	start := m.projectScroll
+	if start < 0 {
+		start = 0
+	}
+	if start > len(m.projects) {
+		start = len(m.projects)
+	}
+	end := start + visible
+	if end > len(m.projects) {
+		end = len(m.projects)
+	}
+
+	for i := start; i < end; i++ {
+		p := m.projects[i]
+		icon, iconColor := statusIcon(p.Status, th)
+		name := strings.TrimSpace(p.Name)
+		if name == "" {
+			name = p.Path
+		}
+
+		prefix := "  "
+		nameStyle := primary
+		pathStyle := faint
+		if m.active && m.focus == focusLeft && i == m.projectCursor {
+			prefix = "> "
+			nameStyle = lipgloss.NewStyle().Foreground(th.WarningText).Bold(true).Width(inner)
+			pathStyle = secondary
+		}
+
+		iconText := lipgloss.NewStyle().Foreground(iconColor).Render(icon)
+		rows = append(rows,
+			nameStyle.Render(prefix+iconText+" "+name),
+			pathStyle.Render("  "+p.Path),
+		)
+		if p.StatusMsg != "" {
+			rows = append(rows, lipgloss.NewStyle().Foreground(th.ErrorText).Width(inner).Render("  "+p.StatusMsg))
+		}
+		rows = append(rows, "")
+	}
+
+	if start > 0 || end < len(m.projects) {
+		rows = append(rows, faint.Render("More projects above/below."))
+	}
+	rows = append(rows, faint.Render("enter open   r refresh   n new   esc back"))
+	return rows
+}
 
 func (m Model) renderRight(w int) string {
 	minBottomH := 8
@@ -177,13 +241,13 @@ func (m Model) renderCatalog(w, h int) string {
 		var title string
 		if m.catalogTab == 0 {
 			title = "Pipelines"
-			if m.focus == focusRight {
+			if m.active && m.focus == focusRight {
 				title += " (t: Tools)"
 			}
 			content = strings.Join(m.renderSectionRows(title, m.pipelines, inner, m.pipelineCursor, m.pipelineScroll, visibleItems), "\n")
 		} else {
 			title = "Tools"
-			if m.focus == focusRight {
+			if m.active && m.focus == focusRight {
 				title += " (t: Pipelines)"
 			}
 			content = strings.Join(m.renderSectionRows(title, m.tools, inner, m.toolCursor, m.toolScroll, visibleItems), "\n")
@@ -191,7 +255,7 @@ func (m Model) renderCatalog(w, h int) string {
 	}
 
 	border := th.FaintBorder
-	if m.focus == focusRight {
+	if m.active && m.focus == focusRight {
 		border = th.PrimaryBorder
 	}
 	return box(content, w, h, border, th.PrimaryText)
@@ -226,7 +290,7 @@ func (m Model) renderSectionRows(title string, entries []CatalogEntry, w, cursor
 
 	for i := scroll; i < end; i++ {
 		e := entries[i]
-		selected := m.focus == focusRight && i == cursor
+		selected := m.active && m.focus == focusRight && i == cursor
 		icon, iconColor := statusIcon(e.Status, th)
 
 		prefix := "  "

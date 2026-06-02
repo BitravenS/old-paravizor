@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"charm.land/log/v2"
+	"github.com/bitravens/paravizor/v1/internal/config"
 	"github.com/bitravens/paravizor/v1/internal/project"
 	"github.com/bitravens/paravizor/v1/internal/store"
 	"github.com/bitravens/paravizor/v1/internal/tui/components/footer"
@@ -25,10 +28,19 @@ const (
 	ViewStateProject
 )
 
+type homeFocusArea int
+
+const (
+	homeFocusActions homeFocusArea = iota
+	homeFocusSidebar
+	homeFocusCatalog
+)
+
 type Model struct {
 	Ctx         *context.ProgramContext
 	store       *store.Store
 	state       ViewState
+	homeFocus   homeFocusArea
 	sidebarView sidebar.Model
 	homeView    home.Model
 	projectView projectview.Model
@@ -58,6 +70,7 @@ func NewModel(location, version string, s *store.Store) Model {
 		Ctx:         ctx,
 		store:       s,
 		state:       state,
+		homeFocus:   homeFocusActions,
 		showFooter:  showFooter,
 		sidebarView: sidebar.NewModel(ctx),
 		homeView:    home.NewModel(ctx),
@@ -119,6 +132,51 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recalculateLayout()
 			return m, nil
 
+		case "tab":
+			if m.isInputFocused() {
+				break
+			}
+			if m.state == ViewStateHome {
+				m.cycleHomeFocus(true)
+				m.recalculateLayout()
+				return m, nil
+			}
+
+		case "shift+tab":
+			if m.isInputFocused() {
+				break
+			}
+			if m.state == ViewStateHome {
+				m.cycleHomeFocus(false)
+				m.recalculateLayout()
+				return m, nil
+			}
+
+		case "n":
+			if m.isInputFocused() {
+				break
+			}
+			if m.state == ViewStateHome {
+				m.projectView = projectview.NewModel(m.Ctx, "", m.store)
+				m.Ctx.ProjectDir = ""
+				m.Ctx.Project = nil
+				m.state = ViewStateProject
+				m.recalculateLayout()
+				return m, m.projectView.Init()
+			}
+
+		case "o":
+			if m.isInputFocused() {
+				break
+			}
+			if m.state == ViewStateHome {
+				m.homeFocus = homeFocusActions
+				m.sidebarView.SetFocused(false)
+				m.homeView.FocusProjectBrowser()
+				m.recalculateLayout()
+				return m, nil
+			}
+
 		case "?":
 			if m.isInputFocused() {
 				break
@@ -157,14 +215,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Sidebar: user selected a recent project.
 	case sidebar.ProjectSelectedMsg:
-		m.projectView = projectview.NewModel(m.Ctx, msg.Path, m.store)
-		m.Ctx.ProjectDir = msg.Path
-		if p, err := project.LoadProject(msg.Path); err == nil {
-			m.Ctx.Project = &p
-		}
-		m.state = ViewStateProject
-		m.recalculateLayout()
-		return m, m.projectView.Init()
+		return m.openProjectPath(msg.Path, &cmds)
 
 	// Home: user wants to create/open project.
 	case home.ActionMsg:
@@ -177,14 +228,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.recalculateLayout()
 			return m, m.projectView.Init()
 		case home.ActionOpenProject:
-			m.projectView = projectview.NewModel(m.Ctx, msg.Action.ProjectPath, m.store)
-			m.Ctx.ProjectDir = msg.Action.ProjectPath
-			if p, err := project.LoadProject(msg.Action.ProjectPath); err == nil {
-				m.Ctx.Project = &p
-			}
-			m.state = ViewStateProject
-			m.recalculateLayout()
-			return m, m.projectView.Init()
+			return m.openProjectPath(msg.Action.ProjectPath, &cmds)
 		}
 
 	// Home: user selected a pipeline or tool entry.
@@ -196,6 +240,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Project view: back to home.
 	case projectview.MsgBack:
 		m.state = ViewStateHome
+		m.homeFocus = homeFocusActions
+		m.applyHomeFocus()
 		m.recalculateLayout()
 		return m, nil
 
@@ -213,10 +259,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Route input to active view.
 	switch m.state {
 	case ViewStateHome:
-		m.homeView, cmd = m.homeView.Update(msg)
-		cmds = append(cmds, cmd)
-		m.sidebarView, cmd = m.sidebarView.Update(msg)
-		cmds = append(cmds, cmd)
+		if m.homeFocus == homeFocusSidebar {
+			m.sidebarView, cmd = m.sidebarView.Update(msg)
+			cmds = append(cmds, cmd)
+		} else {
+			m.homeView, cmd = m.homeView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	case ViewStateProject:
 		m.projectView, cmd = m.projectView.Update(msg)
 		cmds = append(cmds, cmd)
@@ -230,6 +279,98 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.recalculateLayout()
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) openProjectPath(path string, cmds *[]tea.Cmd) (tea.Model, tea.Cmd) {
+	localCmds := []tea.Cmd{}
+	if cmds == nil {
+		cmds = &localCmds
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		*cmds = append(*cmds, m.toasterView.Show(fmt.Sprintf("Invalid project path: %v", err), toaster.TypeError, 4_000_000_000))
+		return m, tea.Batch(*cmds...)
+	}
+
+	p, err := project.LoadProject(absPath)
+	if err != nil {
+		*cmds = append(*cmds, m.toasterView.Show(fmt.Sprintf("Could not open project: %v", err), toaster.TypeError, 5_000_000_000))
+		return m, tea.Batch(*cmds...)
+	}
+
+	m.Ctx.ProjectDir = absPath
+	m.Ctx.Project = &p
+	m.addRecentProject(absPath)
+	m.projectView = projectview.NewModel(m.Ctx, absPath, m.store)
+	m.state = ViewStateProject
+	m.showFooter = true
+	m.recalculateLayout()
+	return m, tea.Batch(append(*cmds, m.projectView.Init())...)
+}
+
+func (m *Model) addRecentProject(dir string) {
+	if m.Ctx == nil || m.Ctx.Config == nil || strings.TrimSpace(dir) == "" {
+		return
+	}
+
+	filtered := make([]string, 0, len(m.Ctx.Config.RecentProjects))
+	for _, p := range m.Ctx.Config.RecentProjects {
+		if p != dir {
+			filtered = append(filtered, p)
+		}
+	}
+	m.Ctx.Config.RecentProjects = append([]string{dir}, filtered...)
+	if len(m.Ctx.Config.RecentProjects) > 10 {
+		m.Ctx.Config.RecentProjects = m.Ctx.Config.RecentProjects[:10]
+	}
+
+	if path, err := config.GetGlobalConfigPath(); err == nil {
+		_ = config.WriteConfig(path, *m.Ctx.Config)
+	}
+}
+
+func (m *Model) cycleHomeFocus(forward bool) {
+	if forward {
+		switch m.homeFocus {
+		case homeFocusActions:
+			m.homeFocus = homeFocusSidebar
+		case homeFocusSidebar:
+			m.homeFocus = homeFocusCatalog
+		default:
+			m.homeFocus = homeFocusActions
+		}
+	} else {
+		switch m.homeFocus {
+		case homeFocusActions:
+			m.homeFocus = homeFocusCatalog
+		case homeFocusCatalog:
+			m.homeFocus = homeFocusSidebar
+		default:
+			m.homeFocus = homeFocusActions
+		}
+	}
+	m.applyHomeFocus()
+}
+
+func (m *Model) applyHomeFocus() {
+	if m.state != ViewStateHome {
+		m.sidebarView.SetFocused(false)
+		m.homeView.SetActive(false)
+		return
+	}
+
+	switch m.homeFocus {
+	case homeFocusSidebar:
+		m.sidebarView.SetFocused(true)
+		m.homeView.SetActive(false)
+	case homeFocusCatalog:
+		m.sidebarView.SetFocused(false)
+		m.homeView.FocusCatalog()
+	default:
+		m.sidebarView.SetFocused(false)
+		m.homeView.ActivateLeft()
+	}
 }
 
 func (m Model) isInputFocused() bool {
@@ -255,6 +396,7 @@ func (m *Model) recalculateLayout() {
 	contentWidth := m.Ctx.Window.Width - sidebar.Width
 
 	m.sidebarView.SetHeight(contentHeight)
+	m.applyHomeFocus()
 
 	sizeMsg := tea.WindowSizeMsg{Width: contentWidth, Height: contentHeight}
 	m.homeView, _ = m.homeView.Update(sizeMsg)
@@ -327,7 +469,8 @@ func (m Model) renderHelp(state ViewState) string {
 	} else {
 		lines = append(lines,
 			struct{ key, desc string }{"n", "new project"},
-			struct{ key, desc string }{"tab", "switch panel"},
+			struct{ key, desc string }{"o", "browse projects"},
+			struct{ key, desc string }{"tab", "actions / recent / catalog"},
 			struct{ key, desc string }{"↑/↓", "navigate list"},
 			struct{ key, desc string }{"enter", "select / open"},
 		)
